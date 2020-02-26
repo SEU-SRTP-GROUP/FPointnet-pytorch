@@ -1,8 +1,10 @@
-Ҫ�޸ĵģ�
+要修改的：
 models/frusutm_pointnets_v1.py
 models/model_util.py
 models/tf_util.py
 train/train.py
 train/test.py
 
-models/pointnet_util.py����import tf����û����import�����ĵط� ��ʱ���Բ���Ӧ��
+models/pointnet_util.py里有import tf但是没翻到import这个类的地方 暂时可以不动应该
+
+修改起来应该是，把某一个部分比如rpn这一块整个放到一个py里，一个类里写好各个层以及每一次的训练操作放到forward之类
