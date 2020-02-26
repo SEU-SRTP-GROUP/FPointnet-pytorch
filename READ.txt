@@ -1,0 +1,8 @@
+要修改的：
+models/frusutm_pointnets_v1.py
+models/model_util.py
+models/tf_util.py
+train/train.py
+train/test.py
+
+models/pointnet_util.py里有import tf但是没翻到import这个类的地方 暂时可以不动应该
