@@ -8,3 +8,43 @@ train/test.py
 models/pointnet_util.py里有import tf但是没翻到import这个类的地方 暂时可以不动应该
 
 修改起来应该是，把某一个部分比如rpn这一块整个放到一个py里，一个类里写好各个层以及每一次的训练操作放到forward之类
+####################################################
+fpointnet 代码分析
+1 kitti文件夹下的 都是涉及到视锥提取的数据预处理的代码。 不用改
+2 models 下是模型的定义， 其中
+     （1） frustum_pointnets_v1.py 是 主要模型的定义
+      (2)  frustum_pointnets_v1.py 里面调用了  model_util tf_util pointnet_util 里的函数
+3 trian 文件夹下是网络训练的代码
+      (1) provider.py 是提取预处理得到的数据 送入到网络的代码。 应该不用改
+      (2) train.py  是训练的代码。包括定义学习率、epoch等等。由于pytorch 和 tensorflow的训练框架不同，所以这个地方需要修改
+      (3) test.py 测试脚本
+#####################################################
+将fpointnet 代码从tensorflow转化为 pytorch的思路
+1 重点修改 models文件夹的内容
+2 个人认为在定好接口之后（根据pytorch的框架，主要涉及到：
+    （1） forward() 函数的返回值，也就是result
+    （2） get_loss() 函数以及返回的loss
+3 可以把整个移植工作分成两个大的部分
+    part1: model 的定义 即用pytorch重构 网络代码
+    part2: 搭建训练和测试的框架，每个epoch要写的代码，训练数据的feed (包含对接数据预处理的部分）
+4 关于 model的修改思路。目前先按照pytorch官方教程的框架进行搭建。从 frostum_pointnets_v1.py 这个文件入手。
+  （1）定义一个 FPointNet类，将比较重要的模块封装成类成员变量或者函数。然后在 forward()函数里将所有要素组合起来。
+  （2）在将frustum_pointnets_v1.py里的代码转化为pytorch的过程中，对于调用到tensorflow的部分，查找pytorch相应的函数，进行替换。
+       如果遇到调用了封装在 util.py里的函数，再回到原本的文件中，进行相应的修改或者直接copy
+  （3）对于pytorch版本的代码，文件结构（包括文件名）保持和原本的 tensorflow版本代码相同
+5 关于 train的修改思路。
+   （1）关键就是事先协调好 FPointNet类的接口。
+   （2) 根据官方教程的框架进行 训练框架的搭建...
+            训练框架的搭建就是，假设有一个FPointNet类，这个类有一个 forward()函数，该函数接收数据，返回预测的结果。有一个 get_total_loss()函数返回 loss(是一个tensor)
+             根据这些相应的api, 写相应的训练过程（包括batch的划分...数据扰动，训练参数，模型保存，加载之前的模型进行训练，输出训练log等等）
+####################################################
+备注：1 我将 tf版本的 model 和 trian 放在了 tf-version 这个文件夹中 同时新建了 model 和 train文件夹.
+     2 注意代码规范，自己写的部分 要写清楚注释。这对模块进行说明 ,如果是函数的话注释格式为
+            def function()
+                '''
+                函数说明（如果必要）
+                @author: 作者
+                parm: (参数 如果输入输出是 tensor 可以注明 tensor的shape
+                return返回值
+                '''
+     3 第一次一起写代码，可能需要适应一段时间，包括如何沟通api等等 先试看看吧。
