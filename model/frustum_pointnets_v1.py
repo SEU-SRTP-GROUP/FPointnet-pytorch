@@ -18,3 +18,14 @@ class FPointNet(nn.Module):
         super(FPointNet,self).__init__()
         self.config = config
         self.end_points = {}             #所有输出构成的字典
+
+    def get_3d_box_estimation_v1_net(self,object_point_cloud,one_hot_vec):
+        '''
+        3D box 回归模块
+        @author :chonepieceyb
+        :param object_point_cloud:  经过上一个模块处理后的点云数据  shape: (batch,Mask_num,C)  point clouds in object coordinate
+        :param one_hot_vec:  tensor in shape （batch,3) , length-3 vectors indicating predicted object type
+        :return:  tensor in shape (B,3+NUM_HEADING_BIN*2+NUM_SIZE_CLUSTER*4) including box centers, heading bin class scores and residuals, and size cluster scores and residuals
+        '''
+        num_point = object_point_cloud.size()[1]
+        net = torch.unsqueeze(object_point_cloud,2)         # change shape to (batch,M,1,C)
