@@ -11,8 +11,7 @@ class Config(object):
         '''
         说明： 配置类，保存着 FPointNet所需要的所有参数，如果需要参数就在Config类的构造函数里面加,参数用大写加下划线表示 eg: IS_TRAINING, BN_DECAY
         '''
-        self.point_cloud = point_cloud
-        self.one_hot_vec = one_hot_vec
+
         self.IS_TRAINING = IS_TRAINING
         self.BN_DECAY = BN_DECAY
 
@@ -26,11 +25,11 @@ class FPointNet(nn.Module):
         self.config = config
         self.end_points = {}             #所有输出构成的字典
 
+
         '''
         #author: Qiao
         实例分割模块用到的层
         '''
-<<<<<<< HEAD
         self.get_instance_seg_1 = torch.nn.Sequential(
             OrderedDict(
                 [
@@ -183,18 +182,15 @@ class FPointNet(nn.Module):
 
         logits = torch.squeeze(logits, 2) # BxNxC
         return logits, self.end_points
-=======
-        num_point = object_point_cloud.size()[2]
-        net = torch.unsqueeze(object_point_cloud,3)         # change shape to (batch,C,M,1)
-        net = self.conv_3dbox_1(net)                        # conv_block conv+bn+relu ,  [B,3,M,1]->[B,128,M,1]
-        net = self.conv_3dbox_2(net)                        # conv_block conv+bn+relu ,  [B,128,M,1]->[B,128,M,1]
-        net = self.conv_3dbox_3(net)                        # conv_block conv+bn+relu ,  [B,128,M,1]->[B,256,M,1]
-        net = self.conv_3dbox_4(net)                        # conv_block conv+bn+relu ,  [B,256,M,1]->[B,512,M,1]
-        net = F.max_pool2d(net,(num_point,1))               # max_pool layer   [B,512,M,1]->[B,512,1,1]
-        net = net.view(-1,512)                     # change shape to [B,512]
-        net = torch.cat((net,one_hot_vec),dim=1)            #  shape  [B,512+3]
-        net = self.fc_3dbox_1(net)
-        net = self.fc_3dbox_2(net)
-        output = self.fc_3dbox_3(net)
-        return output
->>>>>>> parent of 145227a... 更新部分函数
+
+    def get_3d_box_estimation_v1_net(self,object_point_cloud,one_hot_vec):
+        '''
+        3D box 回归模块
+        @author :chonepieceyb
+        :param object_point_cloud:  经过上一个模块处理后的点云数据  shape: (batch,Mask_num,C)  point clouds in object coordinate
+        :param one_hot_vec:  tensor in shape （batch,3) , length-3 vectors indicating predicted object type
+        :return:  tensor in shape (B,3+NUM_HEADING_BIN*2+NUM_SIZE_CLUSTER*4) including box centers, heading bin class scores and residuals, and size cluster scores and residuals
+        '''
+        num_point = object_point_cloud.size()[1]
+        net = torch.unsqueeze(object_point_cloud,2)         # change shape to (batch,M,1,C)
+
