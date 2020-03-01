@@ -30,6 +30,7 @@ class FPointNet(nn.Module):
         #author: Qiao
         实例分割模块用到的层
         '''
+<<<<<<< HEAD
         self.get_instance_seg_1 = torch.nn.Sequential(
             OrderedDict(
                 [
@@ -182,3 +183,18 @@ class FPointNet(nn.Module):
 
         logits = torch.squeeze(logits, 2) # BxNxC
         return logits, self.end_points
+=======
+        num_point = object_point_cloud.size()[2]
+        net = torch.unsqueeze(object_point_cloud,3)         # change shape to (batch,C,M,1)
+        net = self.conv_3dbox_1(net)                        # conv_block conv+bn+relu ,  [B,3,M,1]->[B,128,M,1]
+        net = self.conv_3dbox_2(net)                        # conv_block conv+bn+relu ,  [B,128,M,1]->[B,128,M,1]
+        net = self.conv_3dbox_3(net)                        # conv_block conv+bn+relu ,  [B,128,M,1]->[B,256,M,1]
+        net = self.conv_3dbox_4(net)                        # conv_block conv+bn+relu ,  [B,256,M,1]->[B,512,M,1]
+        net = F.max_pool2d(net,(num_point,1))               # max_pool layer   [B,512,M,1]->[B,512,1,1]
+        net = net.view(-1,512)                     # change shape to [B,512]
+        net = torch.cat((net,one_hot_vec),dim=1)            #  shape  [B,512+3]
+        net = self.fc_3dbox_1(net)
+        net = self.fc_3dbox_2(net)
+        output = self.fc_3dbox_3(net)
+        return output
+>>>>>>> parent of 145227a... 更新部分函数
