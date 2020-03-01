@@ -57,7 +57,115 @@ class FPointNet(nn.Module):
             ('relu_3dbox_6', nn.ReLU()),
         ]))
         self.fc_3dbox_3 = nn.Linear(256, 3+NUM_HEADING_BIN*2+NUM_SIZE_CLUSTER*4)
-        
+
+        '''
+        #author: Qiao
+        实例分割模块用到的层
+        '''
+        self.get_instance_seg_1 = torch.nn.Sequential(
+            OrderedDict(
+                [
+                    ("conv_seg_1", torch.nn.Conv2d(self.config.point_cloud.get_shape()[1].value,
+                                              64, 1, stride=1, padding=0)),
+                    ("bn_seg_1", torch.nn.BatchNorm2d(64,
+                                                      momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
+                    ("relu_seg_1",torch.nn.ReLU()),
+                ]))
+        self.get_instance_seg_2 = torch.nn.Sequential(
+            OrderedDict(
+                [
+                    ("conv_seg_2", torch.nn.Conv2d(64,
+                                              64, 1, stride=1, padding=0)),
+                    ("bn_seg_2", torch.nn.BatchNorm2d(64,
+                                                      momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
+                    ("relu_seg_2",torch.nn.ReLU()),
+                ]))
+        # 这一层就结束得到64维局部特征point_feature
+        self.get_instance_seg_3 = torch.nn.Sequential(
+            OrderedDict(
+                [
+                    ("conv_seg_3", torch.nn.Conv2d(64,
+                                              64, 1, stride=1, padding=0)),
+                    ("bn_seg_3", torch.nn.BatchNorm2d(64,
+                                                      momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
+                    ("relu_seg_3",torch.nn.ReLU()),
+                ]))
+        # 这一层就结束得到1024维全局特征global_feature
+        self.get_instance_seg_4 = torch.nn.Sequential(
+            OrderedDict(
+                [
+                    ("conv_seg_4", torch.nn.Conv2d(64,
+                                              128, 1, stride=1, padding=0)),
+                    ("bn_seg_4", torch.nn.BatchNorm2d(128,
+                                                      momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
+                    ("relu_seg_4",torch.nn.ReLU()),
+                ]))
+        self.get_instance_seg_5 = torch.nn.Sequential(
+            OrderedDict(
+                [
+                    ("conv_seg_5", torch.nn.Conv2d(128,
+                                              1024, 1, stride=1, padding=0)),
+                    ("bn_seg_5", torch.nn.BatchNorm2d(1024,
+                                                      momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
+                    ("relu_seg_5",torch.nn.ReLU()),
+                ]))
+        self.get_instance_seg_pool_1 = torch.nn.Sequential(
+            OrderedDict(
+                [
+                    ("pool_seg_1", torch.nn.MaxPool2d(2))
+                ]))
+        # 然后需要拼接两个特征变成一个1088维的
+
+        self.get_instance_seg_6 = torch.nn.Sequential(
+            OrderedDict(
+                [
+                    ("conv_seg_6", torch.nn.Conv2d(1088,
+                                              512, 1, stride=1, padding=0)),
+                    ("bn_seg_6", torch.nn.BatchNorm2d(512,
+                                                      momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
+                    ("relu_seg_6",torch.nn.ReLU()),
+                ]))
+        self.get_instance_seg_7 = torch.nn.Sequential(
+            OrderedDict(
+                [
+                    ("conv_seg_7", torch.nn.Conv2d(512,
+                                              256, 1, stride=1, padding=0)),
+                    ("bn_seg_7", torch.nn.BatchNorm2d(256,
+                                                      momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
+                    ("relu_seg_7",torch.nn.ReLU()),
+                ]))
+        self.get_instance_seg_8 = torch.nn.Sequential(
+            OrderedDict(
+                [
+                    ("conv_seg_8", torch.nn.Conv2d(256,
+                                              128, 1, stride=1, padding=0)),
+                    ("bn_seg_8", torch.nn.BatchNorm2d(128,
+                                                      momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
+                    ("relu_seg_8",torch.nn.ReLU()),
+                ]))
+        self.get_instance_seg_9 = torch.nn.Sequential(
+            OrderedDict(
+                [
+                    ("conv_seg_9", torch.nn.Conv2d(128,
+                                              128, 1, stride=1, padding=0)),
+                    ("bn_seg_9", torch.nn.BatchNorm2d(128,
+                                                      momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
+                    ("relu_seg_9",torch.nn.ReLU()),
+                ]))
+        self.get_instance_seg_dp_1 = torch.nn.Sequential(
+            OrderedDict(
+                [
+                    ("dp_seg_1", torch.nn.Dropout(p=0.5))
+                ]))
+        self.get_instance_seg_10 = torch.nn.Sequential(
+            OrderedDict(
+                [
+                    ("conv_seg_10", torch.nn.Conv2d(128,
+                                              2, 1, stride=1, padding=0)),
+                    # ("bn_seg_10", torch.nn.BatchNorm2d(2,
+                    #                                   momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
+                ]))
+
     def get_3d_box_estimation_v1_net(self,object_point_cloud,one_hot_vec):
         '''
         3D box 回归模块
@@ -82,3 +190,50 @@ class FPointNet(nn.Module):
         net = self.fc_3dbox_2(net)
         output = self.fc_3dbox_3(net)
         return output
+
+    def get_instance_seg_v1_net(self, point_cloud, one_hot_vec):
+        '''
+        @author： Qiao
+        实例分割网络
+        notice：tensorflow是 NHWC  pytorch为 NCHW 需要调整
+
+        Input:
+            point_cloud: TF tensor in shape (B,N,4)
+                frustum point clouds with XYZ and intensity in point channels
+                XYZs are in frustum coordinate
+            one_hot_vec: TF tensor in shape (B,3)
+                length-3 vectors indicating predicted object type
+            end_points: dict
+        Output:
+            logits: TF tensor in shape (B,N,2), scores for bkg/clutter and object
+            end_points: dict
+        '''
+        batch_size = point_cloud.get_shape()[0].value
+        num_point = point_cloud.get_shape()[1].value
+
+        # net = tf.expand_dims(point_cloud, 2)
+        net = torch.unsqueeze(point_cloud, 3)
+
+        net = self.get_instance_seg_1(net)
+        net = self.get_instance_seg_2(net)
+        point_feat = self.get_instance_seg_3(net)
+        net = self.get_instance_seg_4(point_feat)
+        net = self.get_instance_seg_5(net)
+        global_feat = self.get_instance_seg_pool_1(net)
+
+        # 把通道数拼起来 pytorch中为第二个
+        global_feat = torch.cat([global_feat, torch.unsqueeze(torch.unsqueeze(one_hot_vec, 1), 1)], 1)
+
+        global_feat_expand = torch.repeat(global_feat, [1, num_point, 1, 1])
+
+        concat_feat = torch.cat([point_feat, global_feat_expand],3)
+
+        net = self.get_instance_seg_6(concat_feat)
+        net = self.get_instance_seg_7(net)
+        net = self.get_instance_seg_8(net)
+        net = self.get_instance_seg_9(net)
+        net = self.get_instance_seg_dp_1(net)
+        logits = self.get_instance_seg_10(net)
+
+        logits = torch.squeeze(logits, 2) # BxNxC
+        return logits, self.end_points
