@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import os
 import sys
-
+import torch
 NUM_HEADING_BIN = 12
 NUM_SIZE_CLUSTER = 8 # one cluster for each type 每种类型一个集群
 NUM_OBJECT_POINT = 512
@@ -24,3 +24,20 @@ g_mean_size_arr = np.zeros((NUM_SIZE_CLUSTER, 3)) # size clustrs
 for i in range(NUM_SIZE_CLUSTER):
     g_mean_size_arr[i,:] = g_type_mean_size[g_class2type[i]]
     #copy
+
+
+ def point_cloud_masking(point_cloud,logits,end_points,xyz_only=True):
+    '''
+    @author chonepieceyb
+    :param point_cloud:   input  tensor in shape (B,C,N)
+    :param logits:        tensor in shape (B,2,N)
+    :param end_points:    dict of FPoint cal result
+    :param xyz_only:      if True only return XYZ channels
+    :return:        object_point_cloud:  tensor in shape (B,M,3)
+                    for simplicity we only keep XYZ here
+                    M = NUM_OBJECT_POINT as a hyper-parameter
+                    mask_xyz_mean:  tensor in shape (B,3)     the mean value of all points' xyz
+    '''
+    mask = torch.index_select(point_cloud,dim=1,index=[0]).le(torch.index_select(point_cloud,dim=1,index=[1]))  # dim=1 index=0 和 index =1做比较 得到mask  B,1,N
+    mask = mask.float()                               #转化为 float 方便计算
+    mask = torch.
