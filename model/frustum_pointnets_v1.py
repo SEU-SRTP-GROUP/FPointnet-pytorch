@@ -80,3 +80,13 @@ class FPointNet(nn.Module):
         net = self.fc_3dbox_2(net)
         output = self.fc_3dbox_3(net)
         return output
+
+
+    def forward(self, point_cloud, one_hot_vec):
+        '''
+        等同于原本的 get_model
+        @author:chonepieceyb
+        :param point_cloud:  tensor in shape (B,4,N) : 4 (x y z + intensity)
+        :param one_hot_vec:  shape (B,3) predicted object type
+        :return:   end_points: dict (map from name strings to TF tensors)
+        '''
