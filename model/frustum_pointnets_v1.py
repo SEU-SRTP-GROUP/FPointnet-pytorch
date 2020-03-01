@@ -26,7 +26,10 @@ class FPointNet(nn.Module):
         self.config = config
         self.end_points = {}             #所有输出构成的字典
 
-        #实例分割模块
+        '''
+        #author: Qiao
+        实例分割模块用到的层
+        '''
         self.get_instance_seg_1 = torch.nn.Sequential(
             OrderedDict(
                 [
@@ -132,8 +135,24 @@ class FPointNet(nn.Module):
                 ]))
 
     def get_instance_seg_v1_net(self):
-        # tensorflow是NHWC  pytorch为NCHW需要调整
-        # 分割网络
+        '''
+        @author： Qiao
+        实例分割网络
+        notice：tensorflow是NHWC  pytorch为NCHW需要调整
+
+        Input:
+        point_cloud: TF tensor in shape (B,N,4)
+            frustum point clouds with XYZ and intensity in point channels
+            XYZs are in frustum coordinate
+        one_hot_vec: TF tensor in shape (B,3)
+            length-3 vectors indicating predicted object type
+        is_training: TF boolean scalar
+        bn_decay: TF float scalar
+        end_points: dict
+        Output:
+        logits: TF tensor in shape (B,N,2), scores for bkg/clutter and object
+        end_points: dict
+        '''
         batch_size = self.config.point_cloud.get_shape()[0].value
         num_point = self.config.point_cloud.get_shape()[1].value
 
