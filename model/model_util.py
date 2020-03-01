@@ -26,7 +26,7 @@ for i in range(NUM_SIZE_CLUSTER):
     #copy
 
 
- def point_cloud_masking(point_cloud,logits,end_points,xyz_only=True):
+def point_cloud_masking(point_cloud, logits, end_points, xyz_only=True):
     '''
     @author chonepieceyb
     :param point_cloud:   input  tensor in shape (B,C,N)
@@ -38,6 +38,13 @@ for i in range(NUM_SIZE_CLUSTER):
                     M = NUM_OBJECT_POINT as a hyper-parameter
                     mask_xyz_mean:  tensor in shape (B,3)     the mean value of all points' xyz
     '''
-    mask = torch.index_select(point_cloud,dim=1,index=[0]).le(torch.index_select(point_cloud,dim=1,index=[1]))  # dim=1 index=0 和 index =1做比较 得到mask  B,1,N
-    mask = mask.float()                               #转化为 float 方便计算
-    mask = torch.
+    mask = torch.index_select(point_cloud, dim=1, index=torch.tensor([0])).le(
+        torch.index_select(point_cloud, dim=1, index=torch.tensor([0])))  # dim=1 index=0 和 index =1做比较 得到mask  B,1,N
+    mask = mask.float()  # 转化为 float 方便计算 , (B,1,N)
+    point_cloud_xyz = torch.index_select(point_cloud, dim=1,
+                                         index=torch.Tensor([0, 1, 2]))  # 只选择 通道的 xyz , shape [B,3,N]
+    mask_xyz_mean = torch.mean(
+        point_cloud_xyz * mask.repeat(1, 3, 1), dim=2, keepdim=True
+    )  # shape (B,3,1)
+    mask = torch.squeeze(mask, dim=1)  # change shape to (B,N)
+    end_points["mask"] = mask

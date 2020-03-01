@@ -1,4 +1,4 @@
-@@ -2,13 +2,22 @@ import torch
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
@@ -21,7 +21,7 @@ class Config(object):
         self.BN_DECAY = 0.9               # bn 层 的 momentum 参数
 class FPointNet(nn.Module):
     def __init__(self,config):
-        '''
+
         super(FPointNet,self).__init__()
         self.config = config
         self.end_points = {}             #所有输出构成的字典
