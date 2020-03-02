@@ -336,5 +336,10 @@ class FPointNet(nn.Module):
 
 
 if __name__ =='__main__':
+    batch_size = 2
+    N = 1024
+    test_input = torch.rand((batch_size, 4, N))
+    test_one_hot = torch.rand((batch_size, 3))
     fpointnet = FPointNet()
     print(fpointnet)
+    output = fpointnet.forward(test_input, test_one_hot)
