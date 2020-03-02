@@ -22,7 +22,7 @@ class Config(object):
         self.IS_TRAINING = True           # 是否训练 bn 层 在eval的时候应该为 false
         self.BN_DECAY = 0.9               # bn 层 的 momentum 参数
 class FPointNet(nn.Module):
-    def __init__(self,config):
+    def __init__(self,config=Config()):
 
         super(FPointNet,self).__init__()
         self.config = config
@@ -155,59 +155,59 @@ class FPointNet(nn.Module):
 
         self.conv_Tnet_1 =nn.Sequential(OrderedDict([
             ('conv_Tnet_1', nn.Conv2d(self.config.OBJECT_INPUT_CHANNEL, 128, [1, 1])),
-            ('bn_Tnet_1', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
+            ('bn_Tnet_1', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
             ('relu_Tnet_1', nn.ReLU()),
         ]))
         self.conv_Tnet_2 = nn.Sequential(OrderedDict([
             ('conv_Tnet_2', nn.Conv2d(self.config.OBJECT_INPUT_CHANNEL, 128, [1, 1])),
-            ('bn_Tnet_2', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
+            ('bn_Tnet_2', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
             ('relu_Tnet_2', nn.ReLU()),
         ]))
         self.conv_Tnet_3 = nn.Sequential(OrderedDict([
             ('conv_Tnet_3', nn.Conv2d(self.config.OBJECT_INPUT_CHANNEL, 256, [1, 1])),
-            ('bn_Tnet_3', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
+            ('bn_Tnet_3', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
             ('relu_Tnet_3', nn.ReLU()),
         ]))
         self.fc_Tnet_1 = nn.Sequential(OrderedDict([
             ('fc_Tnet_1', nn.Linear(256+3, 256)),
-            ('bn_Tnet_4', nn.BatchNorm2d(512, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
+            ('bn_Tnet_4', nn.BatchNorm2d(512, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
             ('relu_Tnet_4', nn.ReLU()),
         ]))
         self.fc_Tnet_2 = nn.Sequential(OrderedDict([
             ('fc_Tnet_2', nn.Linear(256, 128)),
-            ('bn_Tnet_5', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
+            ('bn_Tnet_5', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
             ('relu_Tnet_5', nn.ReLU()),
         ]))
-        self.fc_Tnet_3 = nn.Lienar(128,3)
+        self.fc_Tnet_3 = nn.Linear(128,3)
         ##############   3d box 回归参数 ######################
         self.conv_3dbox_1 = nn.Sequential(OrderedDict([
             ('conv_3dbox_1', nn.Conv2d(3, 128, [1, 1])),
-            ('bn_3dbox_1', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
+            ('bn_3dbox_1', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
             ('relu_3dbox_1', nn.ReLU()),
         ]))
         self.conv_3dbox_2 = nn.Sequential(OrderedDict([
             ('conv_3dbox_2', nn.Conv2d(128, 128, [1, 1])),
-            ('bn_3dbox_2', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
+            ('bn_3dbox_2', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
             ('relu_3dbox_2', nn.ReLU()),
         ]))
         self.conv_3dbox_3 = nn.Sequential(OrderedDict([
             ('conv_3dbox_3', nn.Conv2d(128, 256, [1, 1])),
-            ('bn_3dbox_3', nn.BatchNorm2d(256, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
+            ('bn_3dbox_3', nn.BatchNorm2d(256, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
             ('relu_3dbox_3', nn.ReLU()),
         ]))
         self.conv_3dbox_4 = nn.Sequential(OrderedDict([
             ('conv_3dbox_4', nn.Conv2d(256, 512, [1, 1])),
-            ('bn_3dbox_4', nn.BatchNorm2d(512, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
+            ('bn_3dbox_4', nn.BatchNorm2d(512, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
             ('relu_3dbox_4', nn.ReLU()),
         ]))
         self.fc_3dbox_1 = nn.Sequential(OrderedDict([
             ('fc_3dbox_1', nn.Linear(515, 512)),
-            ('bn_3dbox_5', nn.BatchNorm2d(512, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
+            ('bn_3dbox_5', nn.BatchNorm2d(512, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
             ('relu_3dbox_5', nn.ReLU()),
         ]))
         self.fc_3dbox_2 = nn.Sequential(OrderedDict([
             ('fc_3dbox_2', nn.Linear(515, 256)),
-            ('bn_3dbox_6', nn.BatchNorm2d(256, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
+            ('bn_3dbox_6', nn.BatchNorm2d(256, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
             ('relu_3dbox_6', nn.ReLU()),
         ]))
         self.fc_3dbox_3 = nn.Linear(256, 3 + NUM_HEADING_BIN * 2 + NUM_SIZE_CLUSTER * 4)
@@ -333,3 +333,8 @@ class FPointNet(nn.Module):
         self.end_points = parse_output_to_tensors (output,self.end_points)
         self.end_points['center'] =  self.end_points['center_boxnet'] + stage1_center # Bx3
         return self.end_points
+
+
+if __name__ =='__main__':
+    fpointnet = FPointNet()
+    print(fpointnet)
