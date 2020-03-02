@@ -329,8 +329,6 @@ class FPointNet(nn.Module):
         self.end_points = parse_output_to_tensors (output,self.end_points)
         self.end_points['center'] =  self.end_points['center_boxnet'] + stage1_center # Bx3
         return self.end_points
-<<<<<<< HEAD
-=======
 
 
 if __name__ =='__main__':
@@ -341,4 +339,3 @@ if __name__ =='__main__':
     fpointnet = FPointNet()
     print(fpointnet)
     output = fpointnet.forward(test_input, test_one_hot)
->>>>>>> 158b623a1d353ae003b38f513268792f8e976b81
