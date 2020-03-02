@@ -19,7 +19,7 @@ g_type_mean_size = {'Car': np.array([3.88311640418,1.62856739989,1.52563191462])
                     'Cyclist': np.array([1.76282397,0.59706367,1.73698127]),
                     'Tram': np.array([16.17150617,2.53246914,3.53079012]),
                     'Misc': np.array([3.64300781,1.54298177,1.92320313])}
-g_mean_size_arr = np.zeros((NUM_SIZE_CLUSTER, 3)) # size clustrs
+g_mean_size_arr = np.zeros((NUM_SIZE_CLUSTER, 3)) #   size clustrs
 #array([[ 0.,  0.,  0.],[ 0.,  0.,  0.],[ 0.,  0.,  0.],[ 0.,  0.,  0.],[ 0.,  0.,  0.],[ 0.,  0.,  0.],[ 0.,  0.,  0.],[ 0.,  0.,  0.]])
 for i in range(NUM_SIZE_CLUSTER):
     g_mean_size_arr[i,:] = g_type_mean_size[g_class2type[i]]
@@ -68,8 +68,8 @@ def point_cloud_masking(point_cloud, logits, end_points, xyz_only=True):
     '''
     batch_size = point_cloud.size()[0]
     num_point = point_cloud.size()[2]
-    mask = torch.index_select(point_cloud, dim=1, index=torch.tensor([0])).le(
-        torch.index_select(point_cloud, dim=1, index=torch.tensor([0])))  # dim=1 index=0 和 index =1做比较 得到mask  B,1,N
+    mask = torch.index_select(logits, dim=1, index=torch.tensor([0])).le(
+        torch.index_select(logits, dim=1, index=torch.tensor([1])))  # dim=1 index=0 和 index =1做比较 得到mask  B,1,N
     mask = mask.float()  # 转化为 float 方便计算 , (B,1,N)
     point_cloud_xyz = torch.index_select(point_cloud, dim=1,
                                          index=torch.tensor([0, 1, 2]))  # 只选择 通道的 xyz , shape [B,3,N]
@@ -89,3 +89,31 @@ def point_cloud_masking(point_cloud, logits, end_points, xyz_only=True):
     object_point_cloud = gather_object_pc(point_cloud_stage1,mask,NUM_OBJECT_POINT)
     object_point_cloud.view((batch_size,num_channels,NUM_OBJECT_POINT))
     return object_point_cloud, torch.squeeze(mask_xyz_mean,dim=2),end_points
+
+def parse_output_to_tensors(output, end_points):
+    '''
+    @author: chonepieceyb
+    :param output:  tensor in shape (B,3+2*NUM_HEADING_BIN+4*NUM_SIZE_CLUSTER)
+    :param end_points: dict
+    :return: end_points: dict (updated)
+    '''
+    batch_size = output.size()[0]
+    center = torch.index_select(output,dim=1,index=torch.arange(0,3))
+    end_points['center_boxnet']  = center
+
+    heading_scores = torch.index_select(output,dim=1,index=torch.arange(3,3+NUM_HEADING_BIN))
+    heading_residuals_normalized = torch.index_select(output,dim=1,index=torch.arange(3+NUM_HEADING_BIN, 3+2*NUM_HEADING_BIN))
+    end_points['heading_scores'] = heading_scores # BxNUM_HEADING_BIN
+    end_points['heading_residuals_normalized'] = \
+        heading_residuals_normalized # BxNUM_HEADING_BIN (-1 to 1)
+    end_points['heading_residuals'] = \
+        heading_residuals_normalized * (np.pi / NUM_HEADING_BIN)  # BxNUM_HEADING_BIN
+    size_scores = torch.index_select(output,dim=1,index=torch.arange( 3+2*NUM_HEADING_BIN, 3+2*NUM_HEADING_BIN+NUM_SIZE_CLUSTER))
+    size_residuals_normalized =  torch.index_select(output,dim=1,index=torch.arange( 3+2*NUM_HEADING_BIN+NUM_SIZE_CLUSTER, 3+2*NUM_HEADING_BIN+4*NUM_SIZE_CLUSTER))
+    size_residuals_normalized = size_residuals_normalized.view((batch_size,3,NUM_SIZE_CLUSTER))         # 这里采用 pytorch的深度 ， 3 表示 dh, dw ,dl ?
+    end_points['size_scores'] = size_scores
+    end_points['size_residuals_normalized'] = size_residuals_normalized
+    g_mean_size_arr_tensor =  torch.tensor(g_mean_size_arr,dtype=torch.float32).permute(1,0)        # 交换维度，原本的是 tensorflow风格 深度在最后一维  (NUM_SIZE_CLUSTER, 3)-> (3,NUM_SIZE_CLUSTER)
+    end_points['size_residuals'] = size_residuals_normalized * \
+        torch.unsqueeze(g_mean_size_arr_tensor,dim=0)
+    return end_points
