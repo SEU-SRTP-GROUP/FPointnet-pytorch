@@ -94,11 +94,6 @@ class FPointNet(nn.Module):
                                                       momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
                     ("relu_seg_5",torch.nn.ReLU()),
                 ]))
-        self.get_instance_seg_pool_1 = torch.nn.Sequential(
-            OrderedDict(
-                [
-                    ("pool_seg_1", torch.nn.MaxPool2d(2))
-                ]))
         # 然后需要拼接两个特征变成一个1088维的
 
         self.get_instance_seg_6 = torch.nn.Sequential(
@@ -217,7 +212,7 @@ class FPointNet(nn.Module):
         @author： Qiao
         实例分割网络
         notice：tensorflow是 NHWC  pytorch为 NCHW 需要调整
-
+        点云数据为 B*N*C
         Input:
             point_cloud: TF tensor in shape (B,4,N)
                 frustum point clouds with XYZ and intensity in point channels
@@ -240,14 +235,15 @@ class FPointNet(nn.Module):
         point_feat = self.get_instance_seg_3(net)
         net = self.get_instance_seg_4(point_feat)
         net = self.get_instance_seg_5(net)
-        global_feat = self.get_instance_seg_pool_1(net)
+        # global_feat = self.get_instance_seg_pool_1(net)
+        global_feat = F.max_pool2d(net,(num_point,1))
 
         # 把通道数拼起来 pytorch中为第二个
-        global_feat = torch.cat([global_feat, torch.unsqueeze(torch.unsqueeze(one_hot_vec, 1), 1)], 1)
+        global_feat = torch.cat([global_feat, torch.unsqueeze(torch.unsqueeze(one_hot_vec, 2), 3)], 1)
 
         global_feat_expand = torch.repeat(global_feat, [1, num_point, 1, 1])
 
-        concat_feat = torch.cat([point_feat, global_feat_expand],3)
+        concat_feat = torch.cat([point_feat, global_feat_expand],1)
 
         net = self.get_instance_seg_6(concat_feat)
         net = self.get_instance_seg_7(net)
@@ -333,6 +329,8 @@ class FPointNet(nn.Module):
         self.end_points = parse_output_to_tensors (output,self.end_points)
         self.end_points['center'] =  self.end_points['center_boxnet'] + stage1_center # Bx3
         return self.end_points
+<<<<<<< HEAD
+=======
 
 
 if __name__ =='__main__':
@@ -343,3 +341,4 @@ if __name__ =='__main__':
     fpointnet = FPointNet()
     print(fpointnet)
     output = fpointnet.forward(test_input, test_one_hot)
+>>>>>>> 158b623a1d353ae003b38f513268792f8e976b81
