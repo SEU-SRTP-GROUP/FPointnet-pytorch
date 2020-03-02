@@ -99,7 +99,7 @@ class FPointNet(nn.Module):
         self.get_instance_seg_6 = torch.nn.Sequential(
             OrderedDict(
                 [
-                    ("conv_seg_6", torch.nn.Conv2d(1088,
+                    ("conv_seg_6", torch.nn.Conv2d(1088+3,
                                               512, 1, stride=1, padding=0)),
                     ("bn_seg_6", torch.nn.BatchNorm2d(512,
                                                       momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
