@@ -224,10 +224,8 @@ class FPointNet(nn.Module):
             logits: TF tensor in shape (B,2,N), scores for bkg/clutter and object
             end_points: dict
         '''
-        batch_size = point_cloud.get_shape()[0].value
-        num_point = point_cloud.get_shape()[2].value
+        num_point = point_cloud.size()[2]
 
-        # net = tf.expand_dims(point_cloud, 2)
         net = torch.unsqueeze(point_cloud, 3)
 
         net = self.get_instance_seg_1(net)
@@ -241,7 +239,7 @@ class FPointNet(nn.Module):
         # 把通道数拼起来 pytorch中为第二个
         global_feat = torch.cat([global_feat, torch.unsqueeze(torch.unsqueeze(one_hot_vec, 2), 3)], 1)
 
-        global_feat_expand = torch.repeat(global_feat, [1, num_point, 1, 1])
+        global_feat_expand = global_feat.repeat( 1, 1, num_point, 1)
 
         concat_feat = torch.cat([point_feat, global_feat_expand],1)
 
@@ -339,3 +337,4 @@ if __name__ =='__main__':
     fpointnet = FPointNet()
     print(fpointnet)
     output = fpointnet.forward(test_input, test_one_hot)
+    print(output)
