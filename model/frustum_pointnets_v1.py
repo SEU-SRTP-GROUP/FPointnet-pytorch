@@ -16,7 +16,7 @@ class Config(object):
         '''
         说明： 配置类，保存着 FPointNet所需要的所有参数，如果需要参数就在Config类的构造函数里面加,参数用大写加下划线表示 eg: IS_TRAINING, BN_DECAY
         '''
-
+        self.INPUT_CHANNEL = 4            # 网络输入通道数
         self.IS_TRAINING = True           # 是否训练 bn 层 在eval的时候应该为 false
         self.BN_DECAY = 0.9               # bn 层 的 momentum 参数
 class FPointNet(nn.Module):
@@ -24,39 +24,12 @@ class FPointNet(nn.Module):
 
         super(FPointNet,self).__init__()
         self.config = config
+        '''
+        end_points: {
+            mask:   (B,N)   dim=1  1： 选中 0:不选中
+        }
+        '''
         self.end_points = {}             #所有输出构成的字典
-
-        self.conv_3dbox_1 = nn.Sequential(OrderedDict([
-            ('conv_3dbox_1', nn.Conv2d(3,128,[1,1])),
-            ('bn_3dbox_1', nn.BatchNorm2d(128,momentum=self.config.BN_DECAY,affine=self.config.IS_TRAINING))
-            ('relu_3dbox_1', nn.ReLU()),
-        ]))
-        self.conv_3dbox_2 = nn.Sequential(OrderedDict([
-            ('conv_3dbox_2', nn.Conv2d(128, 128, [1, 1])),
-            ('bn_3dbox_2', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
-            ('relu_3dbox_2', nn.ReLU()),
-        ]))
-        self.conv_3dbox_3 = nn.Sequential(OrderedDict([
-            ('conv_3dbox_3', nn.Conv2d(128, 256, [1, 1])),
-            ('bn_3dbox_3', nn.BatchNorm2d(256, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
-            ('relu_3dbox_3', nn.ReLU()),
-        ]))
-        self.conv_3dbox_4 = nn.Sequential(OrderedDict([
-            ('conv_3dbox_4', nn.Conv2d(256, 512, [1, 1])),
-            ('bn_3dbox_4', nn.BatchNorm2d(512, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
-            ('relu_3dbox_4', nn.ReLU()),
-        ]))
-        self.fc_3dbox_1 = nn.Sequential(OrderedDict([
-            ('fc_3dbox_1', nn.Linear(515,512)),
-            ('bn_3dbox_5', nn.BatchNorm2d(512, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
-            ('relu_3dbox_5', nn.ReLU()),
-        ]))
-        self.fc_3dbox_2 = nn.Sequential(OrderedDict([
-            ('fc_3dbox_2', nn.Linear(515, 256)),
-            ('bn_3dbox_6', nn.BatchNorm2d(256, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
-            ('relu_3dbox_6', nn.ReLU()),
-        ]))
-        self.fc_3dbox_3 = nn.Linear(256, 3+NUM_HEADING_BIN*2+NUM_SIZE_CLUSTER*4)
 
         '''
         #author: Qiao
@@ -65,7 +38,7 @@ class FPointNet(nn.Module):
         self.get_instance_seg_1 = torch.nn.Sequential(
             OrderedDict(
                 [
-                    ("conv_seg_1", torch.nn.Conv2d(self.config.point_cloud.get_shape()[1].value,
+                    ("conv_seg_1", torch.nn.Conv2d(self.config.INPUT_CHANNEL,
                                               64, 1, stride=1, padding=0)),
                     ("bn_seg_1", torch.nn.BatchNorm2d(64,
                                                       momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
@@ -166,30 +139,37 @@ class FPointNet(nn.Module):
                     #                                   momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
                 ]))
 
-    def get_3d_box_estimation_v1_net(self,object_point_cloud,one_hot_vec):
-        '''
-        3D box 回归模块
-        @author :chonepieceyb
-        :param object_point_cloud:  经过上一个模块处理后的点云数据  shape: (batch,Mask_num,C)  point clouds in object coordinate
-        :param object_point_cloud:  经过上一个模块处理后的点云数据  shape: (batch,C,Mask_num)  point clouds in object coordinate chanels should be 3
-        :param one_hot_vec:  tensor in shape （batch,3) , length-3 vectors indicating predicted object type
-        :return:  tensor in shape (B,3+NUM_HEADING_BIN*2+NUM_SIZE_CLUSTER*4) including box centers, heading bin class scores and residuals, and size cluster scores and residuals
-        '''
-        num_point = object_point_cloud.size()[1]
-        net = torch.unsqueeze(object_point_cloud,2)         # change shape to (batch,M,1,C)
-        num_point = object_point_cloud.size()[2]
-        net = torch.unsqueeze(object_point_cloud,3)         # change shape to (batch,C,M,1)
-        net = self.conv_3dbox_1(net)                        # conv_block conv+bn+relu ,  [B,3,M,1]->[B,128,M,1]
-        net = self.conv_3dbox_2(net)                        # conv_block conv+bn+relu ,  [B,128,M,1]->[B,128,M,1]
-        net = self.conv_3dbox_3(net)                        # conv_block conv+bn+relu ,  [B,128,M,1]->[B,256,M,1]
-        net = self.conv_3dbox_4(net)                        # conv_block conv+bn+relu ,  [B,256,M,1]->[B,512,M,1]
-        net = F.max_pool2d(net,(num_point,1))               # max_pool layer   [B,512,M,1]->[B,512,1,1]
-        net = net.view(-1,512)                     # change shape to [B,512]
-        net = torch.cat((net,one_hot_vec),dim=1)            #  shape  [B,512+3]
-        net = self.fc_3dbox_1(net)
-        net = self.fc_3dbox_2(net)
-        output = self.fc_3dbox_3(net)
-        return output
+        self.conv_3dbox_1 = nn.Sequential(OrderedDict([
+            ('conv_3dbox_1', nn.Conv2d(3, 128, [1, 1])),
+            ('bn_3dbox_1', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
+            ('relu_3dbox_1', nn.ReLU()),
+        ]))
+        self.conv_3dbox_2 = nn.Sequential(OrderedDict([
+            ('conv_3dbox_2', nn.Conv2d(128, 128, [1, 1])),
+            ('bn_3dbox_2', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
+            ('relu_3dbox_2', nn.ReLU()),
+        ]))
+        self.conv_3dbox_3 = nn.Sequential(OrderedDict([
+            ('conv_3dbox_3', nn.Conv2d(128, 256, [1, 1])),
+            ('bn_3dbox_3', nn.BatchNorm2d(256, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
+            ('relu_3dbox_3', nn.ReLU()),
+        ]))
+        self.conv_3dbox_4 = nn.Sequential(OrderedDict([
+            ('conv_3dbox_4', nn.Conv2d(256, 512, [1, 1])),
+            ('bn_3dbox_4', nn.BatchNorm2d(512, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
+            ('relu_3dbox_4', nn.ReLU()),
+        ]))
+        self.fc_3dbox_1 = nn.Sequential(OrderedDict([
+            ('fc_3dbox_1', nn.Linear(515, 512)),
+            ('bn_3dbox_5', nn.BatchNorm2d(512, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
+            ('relu_3dbox_5', nn.ReLU()),
+        ]))
+        self.fc_3dbox_2 = nn.Sequential(OrderedDict([
+            ('fc_3dbox_2', nn.Linear(515, 256)),
+            ('bn_3dbox_6', nn.BatchNorm2d(256, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING))
+            ('relu_3dbox_6', nn.ReLU()),
+        ]))
+        self.fc_3dbox_3 = nn.Linear(256, 3 + NUM_HEADING_BIN * 2 + NUM_SIZE_CLUSTER * 4)
 
     def get_instance_seg_v1_net(self, point_cloud, one_hot_vec):
         '''
@@ -237,3 +217,41 @@ class FPointNet(nn.Module):
 
         logits = torch.squeeze(logits, 2) # BxNxC
         return logits, self.end_points
+
+    def get_3d_box_estimation_v1_net(self,object_point_cloud,one_hot_vec):
+        '''
+        3D box 回归模块
+        @author :chonepieceyb
+        :param object_point_cloud:  经过上一个模块处理后的点云数据  shape: (batch,Mask_num,C)  point clouds in object coordinate
+        :param object_point_cloud:  经过上一个模块处理后的点云数据  shape: (batch,C,Mask_num)  point clouds in object coordinate chanels should be 3
+        :param one_hot_vec:  tensor in shape （batch,3) , length-3 vectors indicating predicted object type
+        :return:  tensor in shape (B,3+NUM_HEADING_BIN*2+NUM_SIZE_CLUSTER*4) including box centers, heading bin class scores and residuals, and size cluster scores and residuals
+        '''
+        num_point = object_point_cloud.size()[1]
+        net = torch.unsqueeze(object_point_cloud,2)         # change shape to (batch,M,1,C)
+        num_point = object_point_cloud.size()[2]
+        net = torch.unsqueeze(object_point_cloud,3)         # change shape to (batch,C,M,1)
+        net = self.conv_3dbox_1(net)                        # conv_block conv+bn+relu ,  [B,3,M,1]->[B,128,M,1]
+        net = self.conv_3dbox_2(net)                        # conv_block conv+bn+relu ,  [B,128,M,1]->[B,128,M,1]
+        net = self.conv_3dbox_3(net)                        # conv_block conv+bn+relu ,  [B,128,M,1]->[B,256,M,1]
+        net = self.conv_3dbox_4(net)                        # conv_block conv+bn+relu ,  [B,256,M,1]->[B,512,M,1]
+        net = F.max_pool2d(net,(num_point,1))               # max_pool layer   [B,512,M,1]->[B,512,1,1]
+        net = net.view(-1,512)                     # change shape to [B,512]
+        net = torch.cat((net,one_hot_vec),dim=1)            #  shape  [B,512+3]
+        net = self.fc_3dbox_1(net)
+        net = self.fc_3dbox_2(net)
+        output = self.fc_3dbox_3(net)
+        return output
+
+
+    def forward(self, point_cloud,one_hot_vec):
+        '''
+        @ author chonepieceyb
+        :param point_cloud:  tensor in shape (B,4,N)
+                             frustum point clouds with XYZ and intensity in point channels
+                             XYZs are in frustum coordinate
+        :param one_hot_vec:  F tensor in shape (B,3)
+            length-3 vectors indicating predicted object type
+        :return:  end_points: dict (map from name strings to  tensors)
+        '''
+        
