@@ -12,6 +12,7 @@ sys.path.append(os.path.join(ROOT_DIR, 'utils'))
 from model_util import NUM_HEADING_BIN, NUM_SIZE_CLUSTER, NUM_OBJECT_POINT
 from model_util import point_cloud_masking
 from model_util import parse_output_to_tensors
+from model_util import init_fpointnet
 class Config(object):
     def __init__(self):
         '''
@@ -94,17 +95,12 @@ class FPointNet(nn.Module):
                                                       momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
                     ("relu_seg_5",torch.nn.ReLU()),
                 ]))
-        self.get_instance_seg_pool_1 = torch.nn.Sequential(
-            OrderedDict(
-                [
-                    ("pool_seg_1", torch.nn.MaxPool2d(2))
-                ]))
         # 然后需要拼接两个特征变成一个1088维的
 
         self.get_instance_seg_6 = torch.nn.Sequential(
             OrderedDict(
                 [
-                    ("conv_seg_6", torch.nn.Conv2d(1088,
+                    ("conv_seg_6", torch.nn.Conv2d(1088+3,
                                               512, 1, stride=1, padding=0)),
                     ("bn_seg_6", torch.nn.BatchNorm2d(512,
                                                       momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
@@ -159,23 +155,23 @@ class FPointNet(nn.Module):
             ('relu_Tnet_1', nn.ReLU()),
         ]))
         self.conv_Tnet_2 = nn.Sequential(OrderedDict([
-            ('conv_Tnet_2', nn.Conv2d(self.config.OBJECT_INPUT_CHANNEL, 128, [1, 1])),
+            ('conv_Tnet_2', nn.Conv2d(128, 128, [1, 1])),
             ('bn_Tnet_2', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
             ('relu_Tnet_2', nn.ReLU()),
         ]))
         self.conv_Tnet_3 = nn.Sequential(OrderedDict([
-            ('conv_Tnet_3', nn.Conv2d(self.config.OBJECT_INPUT_CHANNEL, 256, [1, 1])),
-            ('bn_Tnet_3', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
+            ('conv_Tnet_3', nn.Conv2d(128, 256, [1, 1])),
+            ('bn_Tnet_3', nn.BatchNorm2d(256, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
             ('relu_Tnet_3', nn.ReLU()),
         ]))
         self.fc_Tnet_1 = nn.Sequential(OrderedDict([
             ('fc_Tnet_1', nn.Linear(256+3, 256)),
-            ('bn_Tnet_4', nn.BatchNorm2d(512, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
+            ('bn_Tnet_4', nn.BatchNorm1d(256, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
             ('relu_Tnet_4', nn.ReLU()),
         ]))
         self.fc_Tnet_2 = nn.Sequential(OrderedDict([
             ('fc_Tnet_2', nn.Linear(256, 128)),
-            ('bn_Tnet_5', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
+            ('bn_Tnet_5', nn.BatchNorm1d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
             ('relu_Tnet_5', nn.ReLU()),
         ]))
         self.fc_Tnet_3 = nn.Linear(128,3)
@@ -202,12 +198,12 @@ class FPointNet(nn.Module):
         ]))
         self.fc_3dbox_1 = nn.Sequential(OrderedDict([
             ('fc_3dbox_1', nn.Linear(515, 512)),
-            ('bn_3dbox_5', nn.BatchNorm2d(512, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
+            ('bn_3dbox_5', nn.BatchNorm1d(512, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
             ('relu_3dbox_5', nn.ReLU()),
         ]))
         self.fc_3dbox_2 = nn.Sequential(OrderedDict([
-            ('fc_3dbox_2', nn.Linear(515, 256)),
-            ('bn_3dbox_6', nn.BatchNorm2d(256, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
+            ('fc_3dbox_2', nn.Linear(512, 256)),
+            ('bn_3dbox_6', nn.BatchNorm1d(256, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
             ('relu_3dbox_6', nn.ReLU()),
         ]))
         self.fc_3dbox_3 = nn.Linear(256, 3 + NUM_HEADING_BIN * 2 + NUM_SIZE_CLUSTER * 4)
@@ -217,7 +213,7 @@ class FPointNet(nn.Module):
         @author： Qiao
         实例分割网络
         notice：tensorflow是 NHWC  pytorch为 NCHW 需要调整
-
+        点云数据为 B*N*C
         Input:
             point_cloud: TF tensor in shape (B,4,N)
                 frustum point clouds with XYZ and intensity in point channels
@@ -229,10 +225,8 @@ class FPointNet(nn.Module):
             logits: TF tensor in shape (B,2,N), scores for bkg/clutter and object
             end_points: dict
         '''
-        batch_size = point_cloud.get_shape()[0].value
-        num_point = point_cloud.get_shape()[2].value
+        num_point = point_cloud.size()[2]
 
-        # net = tf.expand_dims(point_cloud, 2)
         net = torch.unsqueeze(point_cloud, 3)
 
         net = self.get_instance_seg_1(net)
@@ -240,14 +234,15 @@ class FPointNet(nn.Module):
         point_feat = self.get_instance_seg_3(net)
         net = self.get_instance_seg_4(point_feat)
         net = self.get_instance_seg_5(net)
-        global_feat = self.get_instance_seg_pool_1(net)
+        # global_feat = self.get_instance_seg_pool_1(net)
+        global_feat = F.max_pool2d(net,(num_point,1))
 
         # 把通道数拼起来 pytorch中为第二个
-        global_feat = torch.cat([global_feat, torch.unsqueeze(torch.unsqueeze(one_hot_vec, 1), 1)], 1)
+        global_feat = torch.cat([global_feat, torch.unsqueeze(torch.unsqueeze(one_hot_vec, 2), 3)], 1)
 
-        global_feat_expand = torch.repeat(global_feat, [1, num_point, 1, 1])
+        global_feat_expand = global_feat.repeat( 1, 1, num_point, 1)
 
-        concat_feat = torch.cat([point_feat, global_feat_expand],3)
+        concat_feat = torch.cat([point_feat, global_feat_expand],1)
 
         net = self.get_instance_seg_6(concat_feat)
         net = self.get_instance_seg_7(net)
@@ -255,8 +250,7 @@ class FPointNet(nn.Module):
         net = self.get_instance_seg_9(net)
         net = self.get_instance_seg_dp_1(net)
         logits = self.get_instance_seg_10(net)
-
-        logits = torch.squeeze(logits, 2) # BxCxN
+        logits = torch.squeeze(logits, 3) # BxCxN
         return logits
 
     def get_3d_box_estimation_v1_net(self,object_point_cloud,one_hot_vec):
@@ -296,7 +290,7 @@ class FPointNet(nn.Module):
         net = self.conv_Tnet_3(net)                          # conv_block conv+bn+relu ,  [B,128,M,1]->[B,256,M,1]
         net = F.max_pool2d(net,(num_point,1))              # max_pool layer   [B,256,M,1]->[B,256,1,1]
         net = net.view(-1,256)                           # (B,256)
-        net = torch.cat((net,one_hot_vec))                # (B,259)
+        net = torch.cat((net,one_hot_vec),dim=1)                # (B,259)
         net = self.fc_Tnet_1(net)                        # fc+bn+relu    [B,259]->[B,256]
         net = self.fc_Tnet_2(net)                         # fc+bn+relu    [B,256]->[B,128]
         predicted_center = self.fc_Tnet_3(net)            # fc           [B,128]->[B,3]
@@ -341,5 +335,11 @@ if __name__ =='__main__':
     test_input = torch.rand((batch_size, 4, N))
     test_one_hot = torch.rand((batch_size, 3))
     fpointnet = FPointNet()
-    print(fpointnet)
-    output = fpointnet.forward(test_input, test_one_hot)
+    #init_fpointnet(fpointnet)
+    #output = fpointnet.forward(test_input, test_one_hot)
+    #查看网络参数
+    init_fpointnet(fpointnet)
+    for name,parm in fpointnet.named_parameters():
+        print(name,"----------",parm)
+        print('-------------------------------------')
+

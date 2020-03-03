@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.nn as nn
 import os
 import sys
 import torch
@@ -25,6 +26,30 @@ for i in range(NUM_SIZE_CLUSTER):
     g_mean_size_arr[i,:] = g_type_mean_size[g_class2type[i]]
     #copy
 
+def init_fpointnet(net,use_xavier =True):
+    '''
+    初始化 net的权重的函数 ,
+    @author: chonepieceyb
+    :param net:         要初始化的网络
+    :param use_xavier:  使用 xavier_uniform 初始化方式。 如果为ture 就采用pytorch 默认的初始化方式（应该是 uniform?)
+    '''
+    if use_xavier:
+        for m in net.modules():
+            if isinstance(m,nn.Conv2d):                   # 初始化 2D 卷积层
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias !=None:
+                    nn.init.constant(m.bias,0)
+            elif isinstance(m,nn.BatchNorm2d):              # bn层 两个参数 初始化为 1 和 0
+                nn.init.constant(m.weight,1)
+                nn.init.constant(m.bias, 0)
+            elif isinstance(m,nn.BatchNorm1d):
+                nn.init.constant(m.weight, 1)
+                nn.init.constant(m.bias, 0)
+            elif isinstance(m,nn.Linear):                 #初始化全连接层
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias !=None:
+                    nn.init.constant(m.bias, 0)
+
 def gather_object_pc(point_cloud,mask,npoints=512):
     '''
     根据mask 和 npoints 取出分割得到的点 如果点的数目 > 512 就随机采样
@@ -38,9 +63,10 @@ def gather_object_pc(point_cloud,mask,npoints=512):
     #根据mask 计算 indices
     size = mask.size()
     indices = torch.zeros((size[0],npoints))
-    object_pc = torch.tensor((size[0],point_cloud.size()[1],npoints))   # shape (B,C,npoints)
+    object_pc = torch.zeros((size[0],point_cloud.size()[1],npoints))   # shape (B,C,npoints)
     for b in range(size[0]):
-        pos_indices = torch.nonzero(mask[b,:])      # shape of b_i is [N2]
+        pos_indices = torch.nonzero(mask[b,:])
+        pos_indices = torch.squeeze(pos_indices,-1) # shape of b_i is [N2]
         length = len(pos_indices)
         if length >0:
             if length > npoints:
@@ -50,7 +76,7 @@ def gather_object_pc(point_cloud,mask,npoints=512):
                 choice_index = torch.randint(0,length,[npoints-length])       #随机重复采样 填补空缺    shape [N3]
                 choice_index = torch.cat((torch.arange(0,length),choice_index),dim=0)
         indices[b] =  pos_indices [choice_index]
-        object_pc[b] = torch.index_select(point_cloud[b],dim=1,index=indices[b])
+        object_pc[b] = torch.index_select(point_cloud[b],dim=1, index=indices[b].type(torch.LongTensor) )
     return object_pc, indices
 
 
@@ -66,6 +92,7 @@ def point_cloud_masking(point_cloud, logits, end_points, xyz_only=True):
                     M = NUM_OBJECT_POINT as a hyper-parameter
                     mask_xyz_mean:  tensor in shape (B,3)     the mean value of all points' xyz
     '''
+
     batch_size = point_cloud.size()[0]
     num_point = point_cloud.size()[2]
     mask = torch.index_select(logits, dim=1, index=torch.tensor([0])).le(
@@ -86,7 +113,7 @@ def point_cloud_masking(point_cloud, logits, end_points, xyz_only=True):
         point_cloud_features = point_cloud[:,3:,:]            # 获取额外的 feature     (B, C-3,N )
         point_cloud_stage1 = torch.cat((point_cloud_xyz_stage1,point_cloud_features),dim=1)   #   (B,C,N)
     num_channels = point_cloud_stage1.size()[1]
-    object_point_cloud = gather_object_pc(point_cloud_stage1,mask,NUM_OBJECT_POINT)
+    object_point_cloud ,_= gather_object_pc(point_cloud_stage1,mask,NUM_OBJECT_POINT)
     object_point_cloud.view((batch_size,num_channels,NUM_OBJECT_POINT))
     return object_point_cloud, torch.squeeze(mask_xyz_mean,dim=2),end_points
 
