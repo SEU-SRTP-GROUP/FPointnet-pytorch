@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.nn as nn
 import os
 import sys
 import torch
@@ -24,6 +25,30 @@ g_mean_size_arr = np.zeros((NUM_SIZE_CLUSTER, 3)) #   size clustrs
 for i in range(NUM_SIZE_CLUSTER):
     g_mean_size_arr[i,:] = g_type_mean_size[g_class2type[i]]
     #copy
+
+def init_fpointnet(net,use_xavier =True):
+    '''
+    初始化 net的权重的函数 ,
+    @author: chonepieceyb
+    :param net:         要初始化的网络
+    :param use_xavier:  使用 xavier_uniform 初始化方式。 如果为ture 就采用pytorch 默认的初始化方式（应该是 uniform?)
+    '''
+    if use_xavier:
+        for m in net.modules():
+            if isinstance(m,nn.Conv2d):                   # 初始化 2D 卷积层
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias !=None:
+                    nn.init.constant(m.bias,0)
+            elif isinstance(m,nn.BatchNorm2d):              # bn层 两个参数 初始化为 1 和 0
+                nn.init.constant(m.weight,1)
+                nn.init.constant(m.bias, 0)
+            elif isinstance(m,nn.BatchNorm1d):
+                nn.init.constant(m.weight, 1)
+                nn.init.constant(m.bias, 0)
+            elif isinstance(m,nn.Linear):                 #初始化全连接层
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias !=None:
+                    nn.init.constant(m.bias, 0)
 
 def gather_object_pc(point_cloud,mask,npoints=512):
     '''

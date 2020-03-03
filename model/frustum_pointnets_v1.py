@@ -12,6 +12,7 @@ sys.path.append(os.path.join(ROOT_DIR, 'utils'))
 from model_util import NUM_HEADING_BIN, NUM_SIZE_CLUSTER, NUM_OBJECT_POINT
 from model_util import point_cloud_masking
 from model_util import parse_output_to_tensors
+from model_util import init_fpointnet
 class Config(object):
     def __init__(self):
         '''
@@ -334,6 +335,11 @@ if __name__ =='__main__':
     test_input = torch.rand((batch_size, 4, N))
     test_one_hot = torch.rand((batch_size, 3))
     fpointnet = FPointNet()
-    print(fpointnet)
-    output = fpointnet.forward(test_input, test_one_hot)
-    print(output)
+    #init_fpointnet(fpointnet)
+    #output = fpointnet.forward(test_input, test_one_hot)
+    #查看网络参数
+    init_fpointnet(fpointnet)
+    for name,parm in fpointnet.named_parameters():
+        print(name,"----------",parm)
+        print('-------------------------------------')
+
