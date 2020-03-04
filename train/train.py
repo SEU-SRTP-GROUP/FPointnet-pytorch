@@ -10,6 +10,7 @@ import torch.nn as nn
 
 #基本参数定义
 from torch.autograd import Variable
+import torch.nn.functional as F
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))  #train文件夹的路径
 ROOT_DIR = os.path.dirname(BASE_DIR)     #项目的根目录
@@ -79,7 +80,10 @@ TRAIN_DATASET = provider.FrustumDataset(npoints=NUM_POINT, split='train',
     rotate_to_center=True, random_flip=True, random_shift=True, one_hot=True)
 TEST_DATASET = provider.FrustumDataset(npoints=NUM_POINT, split='val',
     rotate_to_center=True, one_hot=True)
-
+def log_string(out_str):
+    LOG_FOUT.write(out_str+'\n')
+    LOG_FOUT.flush()
+    print(out_str)
 
 #pytorch 搭建神经网络
 
@@ -146,8 +150,14 @@ class Net (nn.Module):
                 MODEL.placeholder_inputs(BATCH_SIZE, NUM_POINT)
             #---------
 
-            #
-            #is_training_pl = tf.placeholder(tf.bool, shape=())
+            #传入cnn shape:(B,4,N) (B,3)
+            out=cnn(pointclouds_pl,one_hot_vec_pl)
+            out.size()
+            #反向传播前清零梯度
+            cnn.zero_grad()
+            out.backward()
+
+            #是否正在训练
             is_training_pl=Variable(torch.BoolTensor(1).cuda())
 
             #batch = tf.get_variable('batch', [],initializer=tf.constant_initializer(0), trainable=False)
@@ -208,8 +218,173 @@ class Net (nn.Module):
             elif OPTIMIZER == 'adam':
                 optimizer = torch.optim.Adam(learning_rate)
             #optim
+
+
+
             #pytorch结构有待调整
             #line180
+    def train_one_epoch( ops, train_writer):
+        is_training = True
+        log_string(str(datetime.now()))
+        # Shuffle train samples
+        # 对dataset进行随机排列打乱顺序，不知道用途是干啥的大概是符合高斯分布的随机数
+        train_idxs = np.arange(0, len(TRAIN_DATASET))
+        np.random.shuffle(train_idxs)
+        num_batches = len(TRAIN_DATASET) // BATCH_SIZE
+
+        # To collect statistics
+
+        total_correct = 0
+        total_seen = 0
+        loss_sum = 0
+        iou2ds_sum = 0
+        iou3ds_sum = 0
+        iou3d_correct_cnt = 0
+
+        # Training with batches
+        for batch_idx in range(num_batches):
+            start_idx = batch_idx * BATCH_SIZE
+            end_idx = (batch_idx + 1) * BATCH_SIZE
+
+            #train.util---get_batch
+            batch_data, batch_label, batch_center, \
+            batch_hclass, batch_hres, \
+            batch_sclass, batch_sres, \
+            batch_rot_angle, batch_one_hot_vec = \
+                get_batch(TRAIN_DATASET, train_idxs, start_idx, end_idx,
+                          NUM_POINT, NUM_CHANNEL)
+            # feed_dict对占位符placeholder传入数据
+            #修改train.util
+
+            feed_dict = {ops['pointclouds_pl']: batch_data,
+                         ops['one_hot_vec_pl']: batch_one_hot_vec,
+                         ops['labels_pl']: batch_label,
+                         ops['centers_pl']: batch_center,
+                         ops['heading_class_label_pl']: batch_hclass,
+                         ops['heading_residual_label_pl']: batch_hres,
+                         ops['size_class_label_pl']: batch_sclass,
+                         ops['size_residual_label_pl']: batch_sres,
+                         ops['is_training_pl']: is_training, }
+            summary, step, _, loss_val, logits_val, centers_pred_val, \
+            iou2ds, iou3ds = \
+                         [ops['merged'], ops['step'], ops['train_op'], ops['loss'],
+                          ops['logits'], ops['centers_pred'],
+                          ops['end_points']['iou2ds'], ops['end_points']['iou3ds']]
+            # 把这一轮训练的结果返回修正参数
+            preds_val = np.argmax(logits_val, 2)
+            correct = np.sum(preds_val == batch_label)
+            total_correct += correct
+            total_seen += (BATCH_SIZE * NUM_POINT)
+            loss_sum += loss_val
+            iou2ds_sum += np.sum(iou2ds)
+            iou3ds_sum += np.sum(iou3ds)
+            iou3d_correct_cnt += np.sum(iou3ds >= 0.7)
+
+            if (batch_idx + 1) % 10 == 0:
+                log_string(' -- %03d / %03d --' % (batch_idx + 1, num_batches))
+                log_string('mean loss: %f' % (loss_sum / 10))
+                log_string('segmentation accuracy: %f' % \
+                           (total_correct / float(total_seen)))
+                log_string('box IoU (ground/3D): %f / %f' % \
+                           (iou2ds_sum / float(BATCH_SIZE * 10), iou3ds_sum / float(BATCH_SIZE * 10)))
+                log_string('box estimation accuracy (IoU=0.7): %f' % \
+                           (float(iou3d_correct_cnt) / float(BATCH_SIZE * 10)))
+                total_correct = 0
+                total_seen = 0
+                loss_sum = 0
+                iou2ds_sum = 0
+                iou3ds_sum = 0
+                iou3d_correct_cnt = 0
+    def eval_one_epoch(ops):
+        global EPOCH_CNT
+        is_training = False
+        log_string(str(datetime.now()))
+        log_string('---- EPOCH %03d EVALUATION ----' % (EPOCH_CNT))
+        test_idxs = np.arange(0, len(TEST_DATASET))
+        num_batches = len(TEST_DATASET) / BATCH_SIZE
+
+        # To collect statistics
+        total_correct = 0
+        total_seen = 0
+        loss_sum = 0
+        total_seen_class = [0 for _ in range(NUM_CLASSES)]
+        total_correct_class = [0 for _ in range(NUM_CLASSES)]
+        iou2ds_sum = 0
+        iou3ds_sum = 0
+        iou3d_correct_cnt = 0
+        # Simple evaluation with batches
+        for batch_idx in range(num_batches):
+            start_idx = batch_idx * BATCH_SIZE
+            end_idx = (batch_idx + 1) * BATCH_SIZE
+
+            #从get_batch中获取需要的tensor传入下面的feed_dict
+            batch_data, batch_label, batch_center, \
+            batch_hclass, batch_hres, \
+            batch_sclass, batch_sres, \
+            batch_rot_angle, batch_one_hot_vec = \
+                get_batch(TEST_DATASET, test_idxs, start_idx, end_idx,
+                          NUM_POINT, NUM_CHANNEL)
+
+            #这一块feed_dict作用是更新数据
+            # 将字典ops中的参数传给占位符进行测试
+            feed_dict = {ops['pointclouds_pl']: batch_data,
+                         ops['one_hot_vec_pl']: batch_one_hot_vec,
+                         ops['labels_pl']: batch_label,
+                         ops['centers_pl']: batch_center,
+                         ops['heading_class_label_pl']: batch_hclass,
+                         ops['heading_residual_label_pl']: batch_hres,
+                         ops['size_class_label_pl']: batch_sclass,
+                         ops['size_residual_label_pl']: batch_sres,
+                         ops['is_training_pl']: is_training}
+
+            summary, step, loss_val, logits_val, iou2ds, iou3ds = \
+                         [ops['merged'], ops['step'],
+                          ops['loss'], ops['logits'],
+                          ops['end_points']['iou2ds'], ops['end_points']['iou3ds']]
+
+
+            #test_writer.add_summary(summary, step)
+
+            # 降维，preds_val里存的应该是些特征向量与label对应之类的
+            # np.argmax中当第二个参数axis=2时，对三维矩阵a[0][1][2]是在a[2]方向上找最大值，即在行方向比较，此时就是指在每个矩阵内部的行方向上进行比较
+            preds_val = np.argmax(logits_val, 2)
+            correct = np.sum(preds_val == batch_label)
+            total_correct += correct
+            total_seen += (BATCH_SIZE * NUM_POINT)
+            loss_sum += loss_val
+            for l in range(NUM_CLASSES):
+                total_seen_class[l] += np.sum(batch_label == l)
+                total_correct_class[l] += (np.sum((preds_val == l) & (batch_label == l)))
+            iou2ds_sum += np.sum(iou2ds)
+            iou3ds_sum += np.sum(iou3ds)
+            iou3d_correct_cnt += np.sum(iou3ds >= 0.7)
+
+            # 蜜汁操作了一番???segp、segl看不懂 大概是看训练出来的与已有class是否匹配
+            for i in range(BATCH_SIZE):
+                segp = preds_val[i, :]
+                segl = batch_label[i, :]
+                part_ious = [0.0 for _ in range(NUM_CLASSES)]
+                for l in range(NUM_CLASSES):
+                    if (np.sum(segl == l) == 0) and (np.sum(segp == l) == 0):
+                        part_ious[l] = 1.0  # class not present
+                    else:
+                        part_ious[l] = np.sum((segl == l) & (segp == l)) / \
+                                       float(np.sum((segl == l) | (segp == l)))
+
+        log_string('eval mean loss: %f' % (loss_sum / float(num_batches)))
+        log_string('eval segmentation accuracy: %f' % \
+                   (total_correct / float(total_seen)))
+        log_string('eval segmentation avg class acc: %f' % \
+                   (np.mean(np.array(total_correct_class) / \
+                            np.array(total_seen_class, dtype=np.float))))
+        log_string('eval box IoU (ground/3D): %f / %f' % \
+                   (iou2ds_sum / float(num_batches * BATCH_SIZE), iou3ds_sum / \
+                    float(num_batches * BATCH_SIZE)))
+        log_string('eval box estimation accuracy (IoU=0.7): %f' % \
+                   (float(iou3d_correct_cnt) / float(num_batches * BATCH_SIZE)))
+
+        EPOCH_CNT += 1
+
 
 
 
