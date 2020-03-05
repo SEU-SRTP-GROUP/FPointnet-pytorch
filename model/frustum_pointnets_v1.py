@@ -13,6 +13,7 @@ from model_util import NUM_HEADING_BIN, NUM_SIZE_CLUSTER, NUM_OBJECT_POINT
 from model_util import point_cloud_masking
 from model_util import parse_output_to_tensors
 from model_util import init_fpointnet
+from model_util import get_loss
 class Config(object):
     def __init__(self):
         '''
@@ -309,7 +310,7 @@ class FPointNet(nn.Module):
         logits =  self.get_instance_seg_v1_net(
             point_cloud, one_hot_vec
         )  # 这里接口可能有点问题
-        self.end_points['mask_logists'] = logits
+        self.end_points['mask_logits'] = logits
         # masking
         # select masked points and translate to masked points' centroid
         object_point_cloud_xyz, mask_xyz_mean ,self.end_points = \
@@ -335,11 +336,39 @@ if __name__ =='__main__':
     test_input = torch.rand((batch_size, 4, N))
     test_one_hot = torch.rand((batch_size, 3))
     fpointnet = FPointNet()
-    #init_fpointnet(fpointnet)
-    #output = fpointnet.forward(test_input, test_one_hot)
+    init_fpointnet(fpointnet)
+    end_points = fpointnet.forward(test_input, test_one_hot)
     #查看网络参数
     init_fpointnet(fpointnet)
+    '''
     for name,parm in fpointnet.named_parameters():
         print(name,"----------",parm)
         print('-------------------------------------')
+    '''
+    ############## 测试损失函数
+    ''' Loss functions for 3D object detection.
+        Input:
+            mask_label:  int32 tensor in shape (B,N)
+            center_label:  tensor in shape (B,3)
+            heading_class_label:  int32 tensor in shape (B,)
+            heading_residual_label:  tensor in shape (B,)
+            size_class_label:  tensor int32 in shape (B,)
+            size_residual_label: tensor tensor in shape (B,)
+            end_points: dict, outputs from our model
+            corner_loss_weight: float scalar
+            box_loss_weight: float scalar
+        Output:
+            total_loss: scalar tensor
+                the total_loss is also added to the losses collection
+    '''
+    mask_label = torch.randint(0,2,(batch_size,N))
+    center_label = torch.rand((batch_size,3))
+    heading_class_label = torch.randint(0,NUM_HEADING_BIN,(batch_size,))
+    heading_residual_label = torch.rand((batch_size,))
+    size_class_label = torch.randint(0,NUM_SIZE_CLUSTER,(batch_size,))
+    size_residual_label = torch .rand((batch_size,3))
+    corner_loss_weight = 0.5
+    box_loss_weight = 0.5
 
+    total_loss = get_loss(mask_label,center_label,heading_class_label,heading_residual_label,size_class_label,size_residual_label,end_points,corner_loss_weight,box_loss_weight)
+    print(total_loss)
