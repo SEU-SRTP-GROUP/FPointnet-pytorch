@@ -58,57 +58,6 @@ TEST_DATASET = provider.FrustumDataset(npoints=NUM_POINT, split='val',
     rotate_to_center=True, overwritten_data_path=FLAGS.data_path,
     from_rgb_detection=FLAGS.from_rgb_detection, one_hot=True)
 
-def get_session_and_ops(batch_size, num_point):#可以删除 两部分有用（1 loss 2 模型保存）
-    ''' Define model graph, load model parameters,
-    create session and return session handle and tensors
-    '''
-    # 就是建立了主对话session和字典方便数据访问
-    # model那块还没看先放着.....
-    #with tf.Graph().as_default():
-    #    with tf.device('/gpu:'+str(GPU_INDEX)):
-
-    #pointclouds_pl, one_hot_vec_pl, labels_pl, centers_pl, \
-    #heading_class_label_pl, heading_residual_label_pl, \
-    #size_class_label_pl, size_residual_label_pl = \
-    #    MODEL.placeholder_inputs(batch_size, num_point)
-
-    #is_training_pl = tf.placeholder(tf.bool, shape=())
-
-    #end_points = MODEL.forward(pointclouds_pl, one_hot_vec_pl)#get_model改
-
-    loss = MODEL.get_loss(labels_pl, centers_pl,
-        heading_class_label_pl, heading_residual_label_pl,
-        size_class_label_pl, size_residual_label_pl, end_points)#等get_loss api
-    # 保存训练好的模型，生成 checkpoint 文件
-    #saver = tf.train.Saver()
-    state = {'MODEL':model.state_dict(), 
-            'optimizer':optimizer.state_dict(), 
-            'epoch':epoch
-            'loss':loss}
-    torch.save(state, MODEL_PATH) #
-
-    # Create a session
-    # 建立对话方便后面跑数据流图，同train
-    #config = tf.ConfigProto()
-    #config.gpu_options.allow_growth = True
-    #config.allow_soft_placement = True
-    #sess = tf.Session(config=config)
-
-    ops = {'pointclouds_pl': pointclouds_pl,
-            'one_hot_vec_pl': one_hot_vec_pl,
-            'labels_pl': labels_pl,
-            'centers_pl': centers_pl,
-            'heading_class_label_pl': heading_class_label_pl,
-            'heading_residual_label_pl': heading_residual_label_pl,
-            'size_class_label_pl': size_class_label_pl,
-            'size_residual_label_pl': size_residual_label_pl,
-            'is_training_pl': is_training_pl,
-            'logits': end_points['mask_logits'],
-            'center': end_points['center'],
-            'end_points': end_points,
-            'loss': loss}
-    return ops
-
 def softmax(x):
     ''' Numpy function for softmax'''
     # softmax多分类进行匹配 自行百度
@@ -128,12 +77,21 @@ def inference(pc, one_hot_vec, batch_size):
     size_logits = np.zeros((pc.shape[0], NUM_SIZE_CLUSTER))
     size_residuals = np.zeros((pc.shape[0], NUM_SIZE_CLUSTER, 3))
     scores = np.zeros((pc.shape[0],)) # 3D box score 
-   
-    for i in range(int(num_batches)):
 
+    MODEL.load_state_dict(torch.load(MODEL_PATH))
+    for i in range(int(num_batches)):
         #forward函数从前面的函数移动至此
         end_points = MODEL.forward(pc[i*batch_size:(i+1)*batch_size,...], 
         one_hot_vec[i*batch_size:(i+1)*batch_size,:])#get_model改
+
+        loss = MODEL.get_loss(labels_pl, centers_pl,
+        heading_class_label_pl, heading_residual_label_pl,
+        size_class_label_pl, size_residual_label_pl, end_points)#等get_loss api
+
+        torch.save(MODEL.state_dict(), MODEL_PATH) #
+
+        MODEL.load_state_dict(torch.load(MODEL_PATH))
+        MODEL.eval()
 
         logits[i*batch_size:(i+1)*batch_size,...] = end_points['mask_logits']
         centers[i*batch_size:(i+1)*batch_size,...] = end_points['center']
