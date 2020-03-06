@@ -86,11 +86,11 @@ def inference(pc, one_hot_vec, batch_size):
 
         loss = MODEL.get_loss(labels_pl, centers_pl,
         heading_class_label_pl, heading_residual_label_pl,
-        size_class_label_pl, size_residual_label_pl, end_points)#等get_loss api
+        size_class_label_pl, size_residual_label_pl, end_points)#get_loss
 
-        torch.save(MODEL.state_dict(), MODEL_PATH) #
+        torch.save(MODEL.state_dict(), MODEL_PATH) #原saver = tf.train.Saver()
 
-        MODEL.load_state_dict(torch.load(MODEL_PATH))
+        MODEL.load_state_dict(torch.load(MODEL_PATH))#saver.restore(sess, MODEL_PATH)
         MODEL.eval()
 
         logits[i*batch_size:(i+1)*batch_size,...] = end_points['mask_logits']
