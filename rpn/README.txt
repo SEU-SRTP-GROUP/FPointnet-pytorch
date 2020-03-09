@@ -1,0 +1,3 @@
+主要就是
+stereo_rcnn.py中forward里面rpn运算出来的特征图
+具体RPN看stereo_rpn.py
