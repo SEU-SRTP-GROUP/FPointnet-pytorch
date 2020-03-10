@@ -297,7 +297,7 @@ class FPointNet(nn.Module):
         predicted_center = self.fc_Tnet_3(net)            # fc           [B,128]->[B,3]
         return predicted_center
 
-    def forward(self, point_cloud,one_hot_vec):
+    def forward(self, point_cloud, one_hot_vec):
         '''
         @ author chonepieceyb
         :param point_cloud:  tensor in shape (B,4,N)

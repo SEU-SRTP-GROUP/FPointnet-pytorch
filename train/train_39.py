@@ -1,4 +1,5 @@
 import argparse
+import importlib
 import os
 import sys
 from datetime import datetime
@@ -9,7 +10,7 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 import model
 import provider
-
+from model.frustum_pointnets_v1 import FPointNet
 BASE_DIR = os.path.dirname(__file__)
 ROOT_DIR = os.path.dirname(BASE_DIR)
 sys.path.append(BASE_DIR)
@@ -37,7 +38,7 @@ BATCH_SIZE = FLAGS.batch_size
 NUM_POINT = FLAGS.num_point
 MAX_EPOCH = FLAGS.max_epoch
 BASE_LEARNING_RATE = FLAGS.learning_rate
-GPU_INDEX = FLAGS.gpu
+# GPU_INDEX = FLAGS.gpu
 MOMENTUM = FLAGS.momentum
 OPTIMIZER = FLAGS.optimizer
 DECAY_STEP = FLAGS.decay_step
@@ -71,3 +72,108 @@ def log_string(out_str):
     print(out_str)
 
 def get_learning_rate(batch):
+    global_step = int(batch * BATCH_SIZE)
+    learning_rate = BASE_LEARNING_RATE*DECAY_RATE**(global_step/DECAY_STEP)
+    learing_rate = torch.max(learning_rate, 0.00001)
+    return learning_rate
+
+def get_bn_decay(batch):
+    global_step = int(batch * BATCH_SIZE)
+    bn_momentum = BN_INIT_DECAY*BN_DECAY_DECAY_RATE**(global_step/BN_DECAY_DECAY_STEP)
+    bn_decay = torch.min(BN_DECAY_CLIP, 1 - bn_momentum)
+    return bn_decay
+
+#可以把get_batch拿到的直接可并进来其实，后面再改
+def placeholder_inputs(batch_size, num_point):
+    pointclouds_pl = Variable(torch.FloatTensor(batch_size, num_point, 4).zero_().cuda())
+    one_hot_vec_pl = Variable(torch.FloatTensor(batch_size, 3).zero_().cuda())
+
+    # labels_pl is for segmentation label
+    labels_pl = Variable(torch.FloatTensor(batch_size, num_point).zero_().cuda())
+    centers_pl = Variable(torch.FloatTensor(batch_size, 3).zero_().cuda())
+    heading_class_label_pl = Variable(torch.IntTensor(batch_size,).zero_().cuda())
+    heading_residual_label_pl = Variable(torch.FloatTensor(batch_size,).zero_().cuda())
+    size_class_label_pl = Variable(torch.IntTensor(batch_size,).zero_().cuda())
+    size_residual_label_pl = Variable(torch.FloatTensor(batch_size, 3).zero_().cuda())
+
+    return pointclouds_pl, one_hot_vec_pl, labels_pl, centers_pl, \
+        heading_class_label_pl, heading_residual_label_pl, \
+        size_class_label_pl, size_residual_label_pl
+
+def train():
+    fpointnet = FPointNet()
+
+    pointclouds_pl, one_hot_vec_pl, labels_pl, centers_pl, \
+    heading_class_label_pl, heading_residual_label_pl, \
+    size_class_label_pl, size_residual_label_pl = \
+        placeholder_inputs(BATCH_SIZE, NUM_POINT)
+
+    is_training_pl = Variable(torch.BoolTensor(1).cuda())
+
+    batch = Variable(torch.zeros(1).cuda(), requires_grad=False)
+    bn_decay = get_bn_decay(batch)
+
+    # Get model and losses
+    # end_points = fpointnet.forward(pointclouds_pl, one_hot_vec_pl)
+    # loss = fpointnet.get_loss(labels_pl, centers_pl,
+    #             heading_class_label_pl, heading_residual_label_pl,
+    #             size_class_label_pl, size_residual_label_pl, end_points)
+
+    #初始优化器,只放需要训练的参数，需再调整
+    params = []
+    learning_rate = get_learning_rate(batch)
+    optimizer = torch.optim.Adam(params, lr=learning_rate)
+
+    fpointnet = FPointNet()
+
+    for epoch in range(MAX_EPOCH):
+        print('epoch: %d' % epoch)
+        is_training = True
+        log_string(str(datetime.now()))
+
+        # Shuffle train samples
+        # 对dataset进行随机排列打乱顺序，不知道用途是干啥的大概是符合高斯分布的随机数
+        train_idxs = np.arange(0, len(TRAIN_DATASET))
+        np.random.shuffle(train_idxs)
+        num_batches = len(TRAIN_DATASET)//BATCH_SIZE
+
+        # To collect statistics
+        total_correct = 0
+        total_seen = 0
+        loss_sum = 0
+        iou2ds_sum = 0
+        iou3ds_sum = 0
+        iou3d_correct_cnt = 0
+
+        # Training with batches
+        for batch_idx in range(num_batches):
+            start_idx = batch_idx * BATCH_SIZE
+            end_idx = (batch_idx+1) * BATCH_SIZE
+
+            batch_data, batch_label, batch_center, \
+            batch_hclass, batch_hres, \
+            batch_sclass, batch_sres, \
+            batch_rot_angle, batch_one_hot_vec = \
+            get_batch(TRAIN_DATASET, train_idxs, start_idx, end_idx,
+                NUM_POINT, NUM_CHANNEL)
+
+            pointclouds_pl = batch_data
+            one_hot_vec_pl = batch_one_hot_vec
+            labels_pl = batch_label
+            centers_pl = batch_center
+            heading_class_label_pl = batch_hclass
+            heading_residual_label_pl = batch_hres
+            size_class_label_pl = batch_sclass
+            size_residual_label_pl = batch_sres
+
+            fpointnet.train()
+
+            stereoRCNN.zero_grad()
+            end_points = fpointnet.forward(pointclouds_pl, one_hot_vec_pl)
+
+            loss = fpointnet.get_loss(labels_pl, centers_pl,\
+                  heading_class_label_pl, heading_residual_label_pl,\
+                  size_class_label_pl, size_residual_label_pl, end_points)
+
+if __name__ == '__main__':
+    train()
