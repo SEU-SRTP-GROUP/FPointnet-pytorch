@@ -66,16 +66,19 @@ def softmax(x):
     probs /= np.sum(probs, axis=len(shape)-1, keepdims=True)
     return probs
 
+
+
+#主要修改部分
 def inference(pc, one_hot_vec, batch_size):
     ''' Run inference for frustum pointnets in batch mode '''
     assert pc.shape[0]%batch_size == 0
     num_batches = pc.shape[0]/batch_size
-    logits = np.zeros((pc.shape[0], pc.shape[1], NUM_CLASSES))
+    logits = np.zeros((pc.shape[0], NUM_CLASSES, pc.shape[1]))# SHAPE改动 23维调换
     centers = np.zeros((pc.shape[0], 3))
     heading_logits = np.zeros((pc.shape[0], NUM_HEADING_BIN))
     heading_residuals = np.zeros((pc.shape[0], NUM_HEADING_BIN))
     size_logits = np.zeros((pc.shape[0], NUM_SIZE_CLUSTER))
-    size_residuals = np.zeros((pc.shape[0], NUM_SIZE_CLUSTER, 3))
+    size_residuals = np.zeros((pc.shape[0], 3, NUM_SIZE_CLUSTER))# SHAPE改动 23维调换
     scores = np.zeros((pc.shape[0],)) # 3D box score 
 
     MODEL.load_state_dict(torch.load(MODEL_PATH))
@@ -88,21 +91,29 @@ def inference(pc, one_hot_vec, batch_size):
         heading_class_label_pl, heading_residual_label_pl,
         size_class_label_pl, size_residual_label_pl, end_points)#get_loss
 
-        torch.save(MODEL.state_dict(), MODEL_PATH) #原saver = tf.train.Saver()
+        #torch.save(MODEL.state_dict(), MODEL_PATH) #原saver = tf.train.Saver()
 
         MODEL.load_state_dict(torch.load(MODEL_PATH))#saver.restore(sess, MODEL_PATH)
         MODEL.eval()
 
-        logits[i*batch_size:(i+1)*batch_size,...] = end_points['mask_logits']
-        centers[i*batch_size:(i+1)*batch_size,...] = end_points['center']
-        heading_logits[i*batch_size:(i+1)*batch_size,...] = end_points['heading_scores']
-        heading_residuals[i*batch_size:(i+1)*batch_size,...] = end_points['heading_residuals']
-        size_logits[i*batch_size:(i+1)*batch_size,...] = end_points['size_scores']
-        size_residuals[i*batch_size:(i+1)*batch_size,...] = end_points['size_residuals']
 
-        # Compute scores
-        batch_seg_prob = softmax(batch_logits)[:,:,1] # BxN
-        batch_seg_mask = np.argmax(batch_logits, 2) # BxN
+        batch_logits = end_points['mask_logits'] # BxNxC -> BxCxN
+        batch_centers = end_points['center']# Bx3
+        batch_heading_scores = end_points['heading_scores']#(B,NH)
+        batch_heading_residuals = end_points['heading_residuals']#(B,NH)
+        batch_size_scores = end_points['size_scores']#(B,S)
+        batch_size_residuals = end_points['size_residuals']#(B,NS,3)->(B,3,NS)
+
+        logits[i*batch_size:(i+1)*batch_size,...] = batch_logits
+        centers[i*batch_size:(i+1)*batch_size,...] = batch_centers
+        heading_logits[i*batch_size:(i+1)*batch_size,...] = batch_heading_scores
+        heading_residuals[i*batch_size:(i+1)*batch_size,...] = batch_heading_residuals
+        size_logits[i*batch_size:(i+1)*batch_size,...] = batch_size_scores
+        size_residuals[i*batch_size:(i+1)*batch_size,...] = batch_size_residuals
+
+        # Compute scores   shape改动
+        batch_seg_prob = softmax(batch_logits)[:,1,:] # BxN
+        batch_seg_mask = np.argmax(batch_logits, 1) # BxN
         mask_mean_prob = np.sum(batch_seg_prob * batch_seg_mask, 1) # B,
         mask_mean_prob = mask_mean_prob / np.sum(batch_seg_mask,1) # B,
         heading_prob = np.max(softmax(batch_heading_scores),1) # B
@@ -115,10 +126,10 @@ def inference(pc, one_hot_vec, batch_size):
     size_cls = np.argmax(size_logits, 1) # B
     heading_res = np.array([heading_residuals[i,heading_cls[i]] \
         for i in range(pc.shape[0])])
-    size_res = np.vstack([size_residuals[i,size_cls[i],:] \
-        for i in range(pc.shape[0])])
+    size_res = np.vstack([size_residuals[i,:,size_cls[i]] \
+        for i in range(pc.shape[0])])# size_residuals SHAPE改动
 
-    return np.argmax(logits, 2), centers, heading_cls, heading_res, \
+    return np.argmax(logits, 1), centers, heading_cls, heading_res, \
         size_cls, size_res, scores
 
 def write_detection_results(result_dir, id_list, type_list, box2d_list, center_list, \
@@ -186,7 +197,7 @@ def test_from_rgb_detection(output_filename, result_dir=None):
     
     batch_data_to_feed = np.zeros((batch_size, NUM_POINT, NUM_CHANNEL))
     batch_one_hot_to_feed = np.zeros((batch_size, 3))
-    ops = get_session_and_ops(batch_size=batch_size, num_point=NUM_POINT)
+    #ops = get_session_and_ops(batch_size=batch_size, num_point=NUM_POINT)
     for batch_idx in range(num_batches):
         print('batch idx: %d' % (batch_idx))
         start_idx = batch_idx * batch_size
@@ -267,7 +278,7 @@ def test(output_filename, result_dir=None):
     batch_size = BATCH_SIZE
     num_batches = len(TEST_DATASET)//batch_size
 
-    ops = get_session_and_ops(batch_size=batch_size, num_point=NUM_POINT)
+    #ops = get_session_and_ops(batch_size=batch_size, num_point=NUM_POINT)
     correct_cnt = 0
     for batch_idx in range(num_batches):
         print('batch idx: %d' % (batch_idx))

@@ -10,6 +10,7 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 import model
 import provider
+
 from frustum_pointnets_v1 import FPointNet
 from train_util import get_batch
 from model_util import get_loss
@@ -221,7 +222,7 @@ def train_one_epoch(fpointnet,device):
                 iou2ds_sum = 0
                 iou3ds_sum = 0
                 iou3d_correct_cnt = 0
-        EPOCH_CNT += 1
+    EPOCH_CNT += 1
 
 def eval_one_epoch(fpointnet,device):
     '''
