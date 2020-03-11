@@ -300,13 +300,12 @@ def compute_box3d_iou(center_pred,
                       size_class_label, size_residual_label):
     ''' Compute 3D bounding box IoU from network output and labels.
     All inputs are numpy arrays.
-
     Inputs:
         center_pred: (B,3)
         heading_logits: (B,NUM_HEADING_BIN)
         heading_residuals: (B,NUM_HEADING_BIN)
         size_logits: (B,NUM_SIZE_CLUSTER)
-        size_residuals: (B,NUM_SIZE_CLUSTER,3)
+        size_residuals: (B,3,NUM_SIZE_CLUSTER) !!
         center_label: (B,3)
         heading_class_label: (B,)
         heading_residual_label: (B,)
@@ -316,6 +315,8 @@ def compute_box3d_iou(center_pred,
         iou2ds: (B,) birdeye view oriented 2d box ious
         iou3ds: (B,) 3d box ious
     '''
+    # change the dataformat from torch style to tensorflow styleim
+    size_residuals = size_residuals.transpose(0,2,1)
     batch_size = heading_logits.shape[0]
     heading_class = np.argmax(heading_logits, 1) # B
     heading_residual = np.array([heading_residuals[i,heading_class[i]] \

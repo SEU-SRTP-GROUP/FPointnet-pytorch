@@ -34,11 +34,12 @@ def init_fpointnet(net,use_xavier =True):
     :param net:         要初始化的网络
     :param use_xavier:  使用 xavier_uniform 初始化方式。 如果为ture 就采用pytorch 默认的初始化方式（应该是 uniform?)
     '''
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     if use_xavier:
         for m in net.modules():
             if isinstance(m,nn.Conv2d):                   # 初始化 2D 卷积层
                 nn.init.xavier_uniform_(m.weight)
-                if m.bias !=None:
+                if m.bias is not None:
                     nn.init.constant_(m.bias,0)
             elif isinstance(m,nn.BatchNorm2d):              # bn层 两个参数 初始化为 1 和 0
                 nn.init.constant_(m.weight,1)
@@ -48,7 +49,7 @@ def init_fpointnet(net,use_xavier =True):
                 nn.init.constant_(m.bias, 0)
             elif isinstance(m,nn.Linear):                 #初始化全连接层
                 nn.init.xavier_uniform_(m.weight)
-                if m.bias !=None:
+                if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
 
 def gather_object_pc(point_cloud,mask,npoints=512):
@@ -61,6 +62,7 @@ def gather_object_pc(point_cloud,mask,npoints=512):
                     indices:  int tensor in shape [B,npoint]  important!! 因为 pytorch 和 tensorflow 在
                      gather的 api存在一些差距 n, npoint 表示对每一个batch数据的 index ，采用这种方法 应该 配合 index_select使用 遍历batch
     '''
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     #根据mask 计算 indices
     size = mask.size()
     indices = torch.zeros((size[0],npoints))
@@ -77,7 +79,7 @@ def gather_object_pc(point_cloud,mask,npoints=512):
                 choice_index = torch.randint(0,length,[npoints-length])       #随机重复采样 填补空缺    shape [N3]
                 choice_index = torch.cat((torch.arange(0,length),choice_index),dim=0)
         indices[b] =  pos_indices [choice_index]
-        object_pc[b] = torch.index_select(point_cloud[b],dim=1, index=indices[b].type(torch.LongTensor) )
+        object_pc[b] = torch.index_select(point_cloud[b],dim=1, index=indices[b].type(torch.LongTensor).to(device))
     return object_pc, indices
 
 
@@ -93,14 +95,15 @@ def point_cloud_masking(point_cloud, logits, end_points, xyz_only=True):
                     M = NUM_OBJECT_POINT as a hyper-parameter
                     mask_xyz_mean:  tensor in shape (B,3)     the mean value of all points' xyz
     '''
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     batch_size = point_cloud.size()[0]
     num_point = point_cloud.size()[2]
-    mask = torch.index_select(logits, dim=1, index=torch.tensor([0])).le(
-        torch.index_select(logits, dim=1, index=torch.tensor([1])))  # dim=1 index=0 和 index =1做比较 得到mask  B,1,N
+    mask = torch.index_select(logits, dim=1, index=torch.tensor([0]).to(device)).le(
+        torch.index_select(logits, dim=1, index=torch.tensor([1]).to(device)))  # dim=1 index=0 和 index =1做比较 得到mask  B,1,N
     mask = mask.float()  # 转化为 float 方便计算 , (B,1,N)
     point_cloud_xyz = torch.index_select(point_cloud, dim=1,
-                                         index=torch.tensor([0, 1, 2]))  # 只选择 通道的 xyz , shape [B,3,N]
+                                         index=torch.tensor([0, 1, 2]).to(device))  # 只选择 通道的 xyz , shape [B,3,N]
     mask_xyz_mean = torch.mean(
         point_cloud_xyz * mask.repeat(1, 3, 1), dim=2, keepdim=True
     )  # shape (B,3,1)
@@ -125,19 +128,21 @@ def parse_output_to_tensors(output, end_points):
     :param end_points: dict
     :return: end_points: dict (updated)
     '''
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     batch_size = output.size()[0]
-    center = torch.index_select(output,dim=1,index=torch.arange(0,3))
+    center = torch.index_select(output,dim=1,index=torch.arange(0,3).to(device))
     end_points['center_boxnet']  = center
 
-    heading_scores = torch.index_select(output,dim=1,index=torch.arange(3,3+NUM_HEADING_BIN))
-    heading_residuals_normalized = torch.index_select(output,dim=1,index=torch.arange(3+NUM_HEADING_BIN, 3+2*NUM_HEADING_BIN))
+    heading_scores = torch.index_select(output,dim=1,index=torch.arange(3,3+NUM_HEADING_BIN).to(device))
+    heading_residuals_normalized = torch.index_select(output,dim=1,index=torch.arange(3+NUM_HEADING_BIN, 3+2*NUM_HEADING_BIN).to(device))
     end_points['heading_scores'] = heading_scores # BxNUM_HEADING_BIN
     end_points['heading_residuals_normalized'] = \
         heading_residuals_normalized # BxNUM_HEADING_BIN (-1 to 1)
     end_points['heading_residuals'] = \
         heading_residuals_normalized * (np.pi / NUM_HEADING_BIN)  # BxNUM_HEADING_BIN
-    size_scores = torch.index_select(output,dim=1,index=torch.arange( 3+2*NUM_HEADING_BIN, 3+2*NUM_HEADING_BIN+NUM_SIZE_CLUSTER))
-    size_residuals_normalized =  torch.index_select(output,dim=1,index=torch.arange( 3+2*NUM_HEADING_BIN+NUM_SIZE_CLUSTER, 3+2*NUM_HEADING_BIN+4*NUM_SIZE_CLUSTER))
+    size_scores = torch.index_select(output,dim=1,index=torch.arange( 3+2*NUM_HEADING_BIN, 3+2*NUM_HEADING_BIN+NUM_SIZE_CLUSTER).to(device))
+    size_residuals_normalized =  torch.index_select(output,dim=1,index=torch.arange( 3+2*NUM_HEADING_BIN+NUM_SIZE_CLUSTER, 3+2*NUM_HEADING_BIN+4*NUM_SIZE_CLUSTER).to(device))
     size_residuals_normalized = size_residuals_normalized.view((batch_size,3,NUM_SIZE_CLUSTER))         # 这里采用 pytorch的深度 ， 3 表示 dh, dw ,dl ?
     end_points['size_scores'] = size_scores
     end_points['size_residuals_normalized'] = size_residuals_normalized
