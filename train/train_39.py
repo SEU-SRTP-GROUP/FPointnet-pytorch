@@ -212,7 +212,6 @@ def train_one_epoch(fpointnet,device,optimizer):
         iou2ds_sum += np.sum(iou2ds)
         iou3ds_sum += np.sum(iou3ds)
         iou3d_correct_cnt += np.sum(iou3ds>=0.7)
-        print("success")
         if (batch_idx+1)%10 == 0:
                 log_string(' -- %03d / %03d --' % (batch_idx+1, num_batches))
                 log_string('mean loss: %f' % (loss_sum / 10))
@@ -263,16 +262,17 @@ def eval_one_epoch(fpointnet,device):
         batch_rot_angle, batch_one_hot_vec = \
             get_batch(TEST_DATASET, test_idxs, start_idx, end_idx,
                       NUM_POINT, NUM_CHANNEL)
+
         # convert to torch tensor and change data  format
-        batch_data_gpu = torch.from_numpy(batch_data).permute(0,2,1).to(device)                        #
-        batch_label_gpu= torch.from_numpy(batch_label).to(device)
-        batch_center_gpu = torch.from_numpy(batch_center).to(device)
-        batch_hclass_gpu = torch.from_numpy(batch_hclass).to(device)
-        batch_hres_gpu = torch.from_numpy(batch_hres).to(device)
-        batch_sclass_gpu = torch.from_numpy(batch_sclass).to(device)
-        batch_sres_gpu = torch.from_numpy(batch_sres).to(device)
+        batch_data_gpu = torch.from_numpy(batch_data).permute(0,2,1).to(device,dtype=torch.float32)                        #
+        batch_label_gpu= torch.from_numpy(batch_label).to(device,dtype=torch.int64)
+        batch_center_gpu = torch.from_numpy(batch_center).to(device,dtype=torch.float32)
+        batch_hclass_gpu = torch.from_numpy(batch_hclass).to(device,dtype=torch.int64)
+        batch_hres_gpu = torch.from_numpy(batch_hres).to(device,dtype=torch.float32)
+        batch_sclass_gpu = torch.from_numpy(batch_sclass).to(device,dtype=torch.int64)
+        batch_sres_gpu = torch.from_numpy(batch_sres).to(device,dtype=torch.float32)
         batch_rot_angle_gpu = torch.from_numpy(batch_rot_angle).to(device)
-        batch_one_hot_vec_gpu  = torch.from_numpy(batch_one_hot_vec ).to(device)
+        batch_one_hot_vec_gpu  = torch.from_numpy(batch_one_hot_vec ).to(device,dtype=torch.float32)
 
         # eval
         end_points = fpointnet.forward(batch_data_gpu,batch_one_hot_vec_gpu)
@@ -303,8 +303,8 @@ def eval_one_epoch(fpointnet,device):
         '''
         loss  = get_loss(batch_label_gpu,batch_center_gpu,batch_hclass_gpu,batch_hres_gpu,batch_sclass_gpu,batch_sres_gpu,end_points)
         #get data   and transform dataformat from torch style to tensorflow style
-        loss_val = loss.cpu().data().numpy()
-        logits_val = end_points['mask_logits'].cpu().data().numpy()
+        loss_val = loss.cpu().detach().numpy()
+        logits_val = end_points['mask_logits'].cpu().detach().numpy()
         iou2ds,iou3ds,accuracy = compute_summary(end_points,batch_label_gpu,batch_center,batch_hclass,batch_hres,batch_sclass,batch_sres)
         preds_val = np.argmax(logits_val, 1)
         correct = np.sum(preds_val == batch_label)
@@ -342,5 +342,6 @@ def eval_one_epoch(fpointnet,device):
                (float(iou3d_correct_cnt) / float(num_batches * BATCH_SIZE)))
 
     EPOCH_CNT += 1
+
 if __name__ == '__main__':
     train()
