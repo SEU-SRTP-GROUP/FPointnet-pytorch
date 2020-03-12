@@ -204,7 +204,7 @@ def train_one_epoch(fpointnet,device,optimizer):
         logits_val = end_points['mask_logits'].cpu().detach().numpy()
         iou2ds,iou3ds,accuracy = compute_summary(end_points,labels_pl ,batch_center,\
                                                  batch_hclass,batch_hres,batch_sclass,batch_sres)
-        preds_val = np.argmax(logits_val, 2)
+        preds_val = np.argmax(logits_val, 1)
         correct = np.sum(preds_val == batch_label)
         total_correct += correct
         total_seen += (BATCH_SIZE*NUM_POINT)
