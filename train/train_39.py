@@ -138,7 +138,7 @@ def train():
 
     for epoch in range(MAX_EPOCH):
         print('epoch: %d' % epoch)
-        train_one_epoch(fpointnet, device, optimizer)
+        #train_one_epoch(fpointnet, device, optimizer)
         eval_one_epoch(fpointnet, device)
 
 # @torchsnooper.snoop()
@@ -204,7 +204,7 @@ def train_one_epoch(fpointnet,device,optimizer):
         logits_val = end_points['mask_logits'].cpu().detach().numpy()
         iou2ds,iou3ds,accuracy = compute_summary(end_points,labels_pl ,batch_center,\
                                                  batch_hclass,batch_hres,batch_sclass,batch_sres)
-        preds_val = np.argmax(logits_val, 2)
+        preds_val = np.argmax(logits_val, 1)
         correct = np.sum(preds_val == batch_label)
         total_correct += correct
         total_seen += (BATCH_SIZE*NUM_POINT)
@@ -264,47 +264,22 @@ def eval_one_epoch(fpointnet,device):
             get_batch(TEST_DATASET, test_idxs, start_idx, end_idx,
                       NUM_POINT, NUM_CHANNEL)
         # convert to torch tensor and change data  format
-        batch_data_gpu = torch.from_numpy(batch_data).permute(0,2,1).to(device)                        #
-        batch_label_gpu= torch.from_numpy(batch_label).to(device)
-        batch_center_gpu = torch.from_numpy(batch_center).to(device)
-        batch_hclass_gpu = torch.from_numpy(batch_hclass).to(device)
-        batch_hres_gpu = torch.from_numpy(batch_hres).to(device)
-        batch_sclass_gpu = torch.from_numpy(batch_sclass).to(device)
-        batch_sres_gpu = torch.from_numpy(batch_sres).to(device)
-        batch_rot_angle_gpu = torch.from_numpy(batch_rot_angle).to(device)
-        batch_one_hot_vec_gpu  = torch.from_numpy(batch_one_hot_vec ).to(device)
+        batch_data_gpu = torch.from_numpy(batch_data).permute(0,2,1).to(device,dtype=torch.float32)                        #
+        batch_label_gpu= torch.from_numpy(batch_label).to(device,dtype=torch.int64)
+        batch_center_gpu = torch.from_numpy(batch_center).to(device,dtype=torch.float32)
+        batch_hclass_gpu = torch.from_numpy(batch_hclass).to(device,dtype=torch.int64)
+        batch_hres_gpu = torch.from_numpy(batch_hres).to(device,dtype=torch.float32)
+        batch_sclass_gpu = torch.from_numpy(batch_sclass).to(device,dtype=torch.int64)
+        batch_sres_gpu = torch.from_numpy(batch_sres).to(device,dtype=torch.float32)
+        batch_one_hot_vec_gpu  = torch.from_numpy(batch_one_hot_vec).to(device ,dtype=torch.float32)
 
         # eval
-        end_points = fpointnet.forward(batch_data_gpu,batch_one_hot_vec_gpu)
-        '''
-         get_loss(mask_label, center_label, \
-             heading_class_label, heading_residual_label, \
-             size_class_label, size_residual_label, \
-             end_points, \
-             corner_loss_weight=10.0, \
-             box_loss_weight=1.0):
-             
-             ops = {'pointclouds_pl': pointclouds_pl,
-               'one_hot_vec_pl': one_hot_vec_pl,
-               'labels_pl': labels_pl,
-               'centers_pl': centers_pl,
-               'heading_class_label_pl': heading_class_label_pl,
-               'heading_residual_label_pl': heading_residual_label_pl,
-               'size_class_label_pl': size_class_label_pl,
-               'size_residual_label_pl': size_residual_label_pl,
-               'is_training_pl': is_training_pl,
-               'logits': end_points['mask_logits'],
-               'centers_pred': end_points['center'],
-               'loss': loss,
-               'train_op': train_op,
-               'merged': merged,
-               'step': batch,
-               'end_points': end_points}
-        '''
-        loss  = get_loss(batch_label_gpu,batch_center_gpu,batch_hclass_gpu,batch_hres_gpu,batch_sclass_gpu,batch_sres_gpu,end_points)
+        with torch.no_grad():
+            end_points = fpointnet.forward(batch_data_gpu,batch_one_hot_vec_gpu)
+            loss  = get_loss(batch_label_gpu,batch_center_gpu,batch_hclass_gpu,batch_hres_gpu,batch_sclass_gpu,batch_sres_gpu,end_points)
         #get data   and transform dataformat from torch style to tensorflow style
-        loss_val = loss.cpu().data().numpy()
-        logits_val = end_points['mask_logits'].cpu().data().numpy()
+        loss_val = loss.cpu().data.numpy()
+        logits_val = end_points['mask_logits'].data.cpu().numpy()
         iou2ds,iou3ds,accuracy = compute_summary(end_points,batch_label_gpu,batch_center,batch_hclass,batch_hres,batch_sclass,batch_sres)
         preds_val = np.argmax(logits_val, 1)
         correct = np.sum(preds_val == batch_label)
