@@ -78,8 +78,16 @@ def gather_object_pc(point_cloud,mask,npoints=512):
             else:
                 choice_index = torch.randint(0,length,[npoints-length])       #随机重复采样 填补空缺    shape [N3]
                 choice_index = torch.cat((torch.arange(0,length),choice_index),dim=0)
-        indices[b] =  pos_indices [choice_index]
-        object_pc[b] = torch.index_select(point_cloud[b],dim=1, index=indices[b].type(torch.LongTensor).to(device))
+            '''
+            print("pos_indices############################################")
+            print(pos_indices.size())
+            print(pos_indices)
+            print("choice_index############################################")
+            print(choice_index.size())
+            print(choice_index)
+            '''
+            indices[b] =  pos_indices [choice_index]
+            object_pc[b] = torch.index_select(point_cloud[b],dim=1, index=indices[b].type(torch.LongTensor).to(device))
     return object_pc, indices
 
 
