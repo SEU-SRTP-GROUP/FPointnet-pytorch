@@ -212,7 +212,6 @@ def train_one_epoch(fpointnet,device,optimizer):
         iou2ds_sum += np.sum(iou2ds)
         iou3ds_sum += np.sum(iou3ds)
         iou3d_correct_cnt += np.sum(iou3ds>=0.7)
-        print("success")
         if (batch_idx+1)%10 == 0:
                 log_string(' -- %03d / %03d --' % (batch_idx+1, num_batches))
                 log_string('mean loss: %f' % (loss_sum / 10))
@@ -263,6 +262,7 @@ def eval_one_epoch(fpointnet,device):
         batch_rot_angle, batch_one_hot_vec = \
             get_batch(TEST_DATASET, test_idxs, start_idx, end_idx,
                       NUM_POINT, NUM_CHANNEL)
+
         # convert to torch tensor and change data  format
         batch_data_gpu = torch.from_numpy(batch_data).permute(0,2,1).to(device,dtype=torch.float32)                        #
         batch_label_gpu= torch.from_numpy(batch_label).to(device,dtype=torch.int64)
@@ -317,5 +317,6 @@ def eval_one_epoch(fpointnet,device):
                (float(iou3d_correct_cnt) / float(num_batches * BATCH_SIZE)))
 
     EPOCH_CNT += 1
+
 if __name__ == '__main__':
     train()
