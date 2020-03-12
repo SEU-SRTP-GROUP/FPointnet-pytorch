@@ -10,6 +10,7 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 import model
 import provider
+import torchsnooper
 
 from frustum_pointnets_v1 import FPointNet
 from train_util import get_batch
@@ -139,17 +140,19 @@ def train():
 
     for epoch in range(MAX_EPOCH):
         print('epoch: %d' % epoch)
-        train_one_epoch(fpointnet,device)
+        train_one_epoch(fpointnet, device, optimizer)
+        eval_one_epoch(fpointnet, device)
 
-def train_one_epoch(fpointnet,device):
+# @torchsnooper.snoop()
+def train_one_epoch(fpointnet,device,optimizer):
     '''
     @author Qiao
     :param fpointnet: 网络
     :param device: 设备
     :return:
     '''
-    is_training = True
     log_string(str(datetime.now()))
+    log_string('---- EPOCH %03d TRAINING ----' % (EPOCH_CNT))
 
     train_idxs = np.arange(0, len(TRAIN_DATASET))
     np.random.shuffle(train_idxs)
@@ -175,38 +178,43 @@ def train_one_epoch(fpointnet,device):
         get_batch(TRAIN_DATASET, train_idxs, start_idx, end_idx,
                 NUM_POINT, NUM_CHANNEL)
 
-        pointclouds_pl = torch.from_numpy(batch_data).float()
-        pointclouds_pl = pointclouds_pl.permute(0, 2, 1).float()
-        pointclouds_pl = pointclouds_pl.to(device)
-        one_hot_vec_pl = torch.from_numpy(batch_one_hot_vec).float()
-        one_hot_vec_pl = one_hot_vec_pl.to(device)
+        pointclouds_pl = torch.from_numpy(batch_data)
+        pointclouds_pl = pointclouds_pl.permute(0, 2, 1)
+        pointclouds_pl = pointclouds_pl.to(device,dtype=torch.float32)
+        one_hot_vec_pl = torch.from_numpy(batch_one_hot_vec)
+        one_hot_vec_pl = one_hot_vec_pl.to(device,dtype=torch.float32)
 
-        labels_pl = torch.from_numpy(batch_label)
-        labels_pl = labels_pl.to(device,dtype=torch.int64)
-        centers_pl = torch.from_numpy(batch_center)
-        centers_pl = centers_pl.to(device,dtype=torch.int64)
-        heading_class_label_pl = torch.from_numpy(batch_hclass)
-        heading_class_label_pl = heading_class_label_pl.to(device,dtype=torch.int64)
-        heading_residual_label_pl = torch.from_numpy(batch_hres)
-        heading_residual_label_pl = heading_residual_label_pl.to(device,dtype=torch.int64)
-        size_class_label_pl = torch.from_numpy(batch_sclass)
-        size_class_label_pl = size_class_label_pl.to(device,dtype=torch.int64)
-        size_residual_label_pl = torch.from_numpy(batch_sres)
-        size_residual_label_pl = size_residual_label_pl.to(device,dtype=torch.int64)
+        labels_pl = torch.from_numpy(batch_label).to(device,dtype=torch.int64)
+        centers_pl = torch.from_numpy(batch_center).to(device,dtype=torch.float32)
+        heading_class_label_pl = torch.from_numpy(batch_hclass).to(device,dtype=torch.int64)
+        heading_residual_label_pl = torch.from_numpy(batch_hres).to(device,dtype=torch.float32)
+        size_class_label_pl = torch.from_numpy(batch_sclass).to(device,dtype=torch.int64)
+        size_residual_label_pl = torch.from_numpy(batch_sres).to(device,dtype=torch.float32)
 
         fpointnet.train()
 
         # fpointnet.zero_grad()
         end_points = fpointnet.forward(pointclouds_pl, one_hot_vec_pl)
-
         loss = get_loss(labels_pl, centers_pl,\
                   heading_class_label_pl, heading_residual_label_pl,\
                   size_class_label_pl, size_residual_label_pl, end_points)
-
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
+        loss_val = loss.cpu().detach().numpy()
+        logits_val = end_points['mask_logits'].cpu().detach().numpy()
+        iou2ds,iou3ds,accuracy = compute_summary(end_points,batch_label,batch_center,\
+                                                 batch_hclass,batch_hres,batch_sclass,batch_sres)
+        preds_val = np.argmax(logits_val, 2)
+        correct = np.sum(preds_val == batch_label)
+        total_correct += correct
+        total_seen += (BATCH_SIZE*NUM_POINT)
+        loss_sum += loss_val
+        iou2ds_sum += np.sum(iou2ds)
+        iou3ds_sum += np.sum(iou3ds)
+        iou3d_correct_cnt += np.sum(iou3ds>=0.7)
+        print("success")
         if (batch_idx+1)%10 == 0:
                 log_string(' -- %03d / %03d --' % (batch_idx+1, num_batches))
                 log_string('mean loss: %f' % (loss_sum / 10))
@@ -222,7 +230,6 @@ def train_one_epoch(fpointnet,device):
                 iou2ds_sum = 0
                 iou3ds_sum = 0
                 iou3d_correct_cnt = 0
-    EPOCH_CNT += 1
 
 def eval_one_epoch(fpointnet,device):
     '''

@@ -65,8 +65,8 @@ def gather_object_pc(point_cloud,mask,npoints=512):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     #根据mask 计算 indices
     size = mask.size()
-    indices = torch.zeros((size[0],npoints))
-    object_pc = torch.zeros((size[0],point_cloud.size()[1],npoints))   # shape (B,C,npoints)
+    indices = torch.zeros((size[0],npoints)).to(device)
+    object_pc = torch.zeros((size[0],point_cloud.size()[1],npoints)).to(device)   # shape (B,C,npoints)
     for b in range(size[0]):
         pos_indices = torch.nonzero(mask[b,:])
         pos_indices = torch.squeeze(pos_indices,-1) # shape of b_i is [N2]
@@ -146,13 +146,15 @@ def parse_output_to_tensors(output, end_points):
     size_residuals_normalized = size_residuals_normalized.view((batch_size,3,NUM_SIZE_CLUSTER))         # 这里采用 pytorch的深度 ， 3 表示 dh, dw ,dl ?
     end_points['size_scores'] = size_scores
     end_points['size_residuals_normalized'] = size_residuals_normalized
-    g_mean_size_arr_tensor =  torch.tensor(g_mean_size_arr,dtype=torch.float32).permute(1,0)        # 交换维度，原本的是 tensorflow风格 深度在最后一维  (NUM_SIZE_CLUSTER, 3)-> (3,NUM_SIZE_CLUSTER)
+    g_mean_size_arr_tensor =  torch.tensor(g_mean_size_arr,dtype=torch.float32).permute(1,0).to(device)        # 交换维度，原本的是 tensorflow风格 深度在最后一维  (NUM_SIZE_CLUSTER, 3)-> (3,NUM_SIZE_CLUSTER)
     end_points['size_residuals'] = size_residuals_normalized * \
         torch.unsqueeze(g_mean_size_arr_tensor,dim=0)
     return end_points
 
 def get_box3d_corners_helper(centers, headings, sizes):
     """ TF layer. Input: (N,3), (N,), (N,3), Output: (N,8,3) """
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     # print '-----', centers
     N = centers.size()[0];
     l = sizes[:, 0].view(N, 1)  # (N,1)
@@ -169,17 +171,17 @@ def get_box3d_corners_helper(centers, headings, sizes):
     # print x_corners, y_corners, z_corners
     c = torch.cos(headings)
     s = torch.sin(headings)
-    ones = torch.ones([N], dtype=torch.float32)
-    zeros = torch.zeros([N], dtype=torch.float32)
+    ones = torch.ones([N], dtype=torch.float32).to(device)
+    zeros = torch.zeros([N], dtype=torch.float32).to(device)
 
     # stack()矩阵拼接的函数，在axis维上拼接 与concat不同
     # tf.concat拼接的是除了拼接维度axis外其他维度的shape完全相同的张量，并且产生的张量的阶数不会发生变化
     # 而tf.stack则会在新的张量阶上拼接，产生的张量的阶数将会增加
-    row1 = torch.stack([c, zeros, s], dim=1)  # (N,3)
-    row2 = torch.stack([zeros, ones, zeros], dim=1)
-    row3 = torch.stack([-s, zeros, c], dim=1)
+    row1 = torch.stack([c, zeros, s], dim=1).to(device)  # (N,3)
+    row2 = torch.stack([zeros, ones, zeros], dim=1).to(device)
+    row3 = torch.stack([-s, zeros, c], dim=1).to(device)
     R = torch.cat([row1.unsqueeze(1), row2.unsqueeze(1), row3.unsqueeze(1)], dim=1)  # (N,3)->(N,1,3)->(N,3,3)
-    corners_3d = torch.bmm(R, corners)  # (N,3,8)
+    corners_3d = torch.bmm(R, corners).to(device)  # (N,3,8)
     # tile(input,multiples) 用于在同一维度上的复制 multiples[1,1,8]  三个维度分别变为1,1,8倍
     corners_3d += centers.unsqueeze(2).repeat(1, 1, 8)  # (N,3)->(N,3,1)->(N,3,8)
     corners_3d = torch.transpose(corners_3d, 1, 2)  # (N,8,3)
@@ -195,8 +197,10 @@ def get_box3d_corners(center, heading_residuals, size_residuals):
     Outputs:
         box3d_corners: (B,NH,NS,8,3) tensor                NH NS 为开头定义的常量NUM_HEADING_BIN = 12 NUM_SIZE_CLUSTER = 8缩写
     """
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     batch_size = center.size()[0]  # B的值
-    heading_bin_centers = torch.from_numpy(np.arange(0, 2 * np.pi, 2 * np.pi / NUM_HEADING_BIN)).float()  # (NH,)
+    heading_bin_centers = torch.from_numpy(np.arange(0, 2 * np.pi, 2 * np.pi / NUM_HEADING_BIN)).float().to(device)  # (NH,)
     """
     tf.constant(value,dtype=None,shape=None,name=’Const’)
     创建一个常量tensor，按照给出value来赋值，可以用shape来指定其形状。value可以是一个数，也可以是一个list。
@@ -205,7 +209,7 @@ def get_box3d_corners(center, heading_residuals, size_residuals):
     """
     size_residuals = size_residuals.permute(0,2,1)                         #为了兼容性  shape(B,3,NS) -> (B,NS,3)
     headings = heading_residuals + heading_bin_centers.unsqueeze(0)  # (B,NH)
-    mean_sizes = torch.from_numpy(g_mean_size_arr).float().unsqueeze(0)+ size_residuals  # (1,NS,3)+(B,NS,3)
+    mean_sizes = torch.from_numpy(g_mean_size_arr).float().to(device).unsqueeze(0)+ size_residuals  # (1,NS,3)+(B,NS,3)
     #mean_sizes = torch.Tensor.repeat(torch.unsqueeze(torch.from_numpy(g_mean_size_arr).float(), 0).cuda() + size_residuals.cuda(), [batch_size,NUM_SIZE_CLUSTER,3])  # (B,NS,3)+(B,NS,3)
     sizes = mean_sizes + size_residuals  # (B,NS,3)
     sizes = sizes.unsqueeze(1).repeat(1, NUM_HEADING_BIN, 1, 1).float()  # (B,NH,NS,3)
@@ -246,38 +250,40 @@ def get_loss(mask_label, center_label, \
         total_loss: scalar tensor
             the total_loss is also added to the losses collection
     '''
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # 3D Segmentation loss
     # tf.reduce_mean(input_tensor, reduction_indices=None)求平均值，
     # 若reduction_indices有值则在这个维度求均值
     mask_loss =  F.cross_entropy(end_points['mask_logits'],mask_label,reduction='mean')          # 计算一个 batch 的 mean_loss,  softmax + cross_entry_loss
-
     # Center regression losses
     #center_dist = torch.norm(center_label - end_points['center'], p=1, dim=1)                        # center_dist(B)
     center_loss = huber_loss(center_label - end_points['center'], delta=2.0)
-
     #stage1_center_dist = torch.norm(center_label - end_points['stage1_center'], dim=1)
     #stage1_center_loss = huber_loss(stage1_center_dist, delta=1.0)
     stage1_center_loss = F.smooth_l1_loss(end_points['stage1_center'],center_label,reduction='mean')                  # 这里 的 smooth_l1 loss 的 参数为 1 相比于 center_loss的参数值为2 因为上一个的回归要求应该更加严格,所以参数较大离群项的惩罚更大。毕竟 center是 stage_center进一步计算回归得到的
-
     # Heading loss
     heading_class_loss = F.cross_entropy(end_points['heading_scores'], heading_class_label,reduction='mean')
-    hcls_onehot = torch.eye(NUM_HEADING_BIN)[heading_class_label.long()]                                         #暂时删除了  .cuda() 原本为.cuda （B,NUM_CLASS）
+    hcls_onehot = torch.eye(NUM_HEADING_BIN)[heading_class_label.long()].to(device)
+    #暂时删除了  .cuda() 原本为.cuda （B,NUM_CLASS）
     heading_residual_normalized_label = heading_residual_label / (np.pi / NUM_HEADING_BIN)
     #heading_residual_normalized_loss = huber_loss(torch.sum(end_points['heading_residuals_normalized']* torch.FloatTensor(hcls_onehot), dim=1).float() - heading_residual_normalized_label, delta=1.0)
-    heading_residual_normalized_loss = F.smooth_l1_loss(torch.sum(end_points['heading_residuals_normalized']* torch.FloatTensor(hcls_onehot), dim=1).float(),heading_residual_normalized_label, reduction='mean')    #首先先把 heading 分到某个类，再进行回归，回归也是正则化之后回归。 正则化只 x 份 （pi/num_heading)
 
+    # heading_residual_normalized_loss = F.smooth_l1_loss(torch.sum(end_points['heading_residuals_normalized']*torch.FloatTensor(hcls_onehot).to(device), dim=1).float(),heading_residual_normalized_label, reduction='mean')    #首先先把 heading 分到某个类，再进行回归，回归也是正则化之后回归。 正则化只 x 份 （pi/num_heading)
+    temp1 = hcls_onehot.float()
+    temp = torch.sum(end_points['heading_residuals_normalized']*temp1, dim=1).float()
+    heading_residual_normalized_loss = F.smooth_l1_loss(temp,heading_residual_normalized_label, reduction='mean')    #首先先把 heading 分到某个类，再进行回归，回归也是正则化之后回归。 正则化只 x 份 （pi/num_heading)
     # Size loss
     #size_class_loss = torch.mean(torch.nn.CrossEntropyLoss(end_points['size_scores'], size_class_label))
     size_class_loss = F.cross_entropy(end_points['size_scores'],size_class_label,reduction='mean')
-    scls_onehot = torch.eye(NUM_SIZE_CLUSTER)[size_class_label.long()]                                     # BxNUM_SIZE_CLUSTER   先去掉.cuda
+    scls_onehot = torch.eye(NUM_SIZE_CLUSTER)[size_class_label.long()].to(device)                                  # BxNUM_SIZE_CLUSTER   先去掉.cuda
     # scls_onehot_tiled   = torch.Tensor.repeat(torch.Tensor.unsqueeze(scls_onehot.float(), dim=1), 1, 1, 3)   # BxNUM_SIZE_CLUSTERx3
-    scls_onehot_tiled = scls_onehot.float().unsqueeze(1).repeat(1,3,1)
+    scls_onehot_tiled = scls_onehot.float().unsqueeze(1).repeat(1,3,1).to(device)
     # Bx1*NUM_SIZE_CLUSTER
     # Bx3xNUM_SIZE_CLUSTER
     predicted_size_residual_normalized = torch.sum(end_points['size_residuals_normalized'] * scls_onehot_tiled, dim=2)  # Bx3
-    mean_size_arr_expand = torch.from_numpy(g_mean_size_arr).float().unsqueeze(0)     # 1xNUM_SIZE_CLUSTERx3
+    mean_size_arr_expand = torch.from_numpy(g_mean_size_arr).float().unsqueeze(0).to(device)     # 1xNUM_SIZE_CLUSTERx3
     mean_size_arr_expand =  mean_size_arr_expand.permute(0,2,1)                                      # change shape to 1*3*NUN_SIZE_CLUSTER
-    mean_size_label = torch.sum(scls_onehot_tiled * mean_size_arr_expand, dim=2)  # Bx3
+    mean_size_label = torch.sum(scls_onehot_tiled * mean_size_arr_expand, dim=2).to(device)  # Bx3
     size_residual_label_normalized = size_residual_label / mean_size_label
     #size_normalized_dist = torch.norm(size_residual_label_normalized - predicted_size_residual_normalized, dim=1)
     #size_residual_normalized_loss = huber_loss(size_normalized_dist, delta=1.0)
@@ -288,15 +294,15 @@ def get_loss(mask_label, center_label, \
     # GT heading bin and size cluster.
 
     corners_3d = get_box3d_corners(end_points['center'], end_points['heading_residuals'], end_points['size_residuals'])             # (B,NH,NS,8,3)
-    gt_mask = hcls_onehot.unsqueeze(2).repeat(1, 1, NUM_SIZE_CLUSTER) * scls_onehot.unsqueeze(1).repeat(1, NUM_HEADING_BIN, 1)  # (B,NH,NS)
+    gt_mask = hcls_onehot.unsqueeze(2).repeat(1, 1, NUM_SIZE_CLUSTER) * scls_onehot.unsqueeze(1).repeat(1, NUM_HEADING_BIN, 1).to(device)  # (B,NH,NS)
 
     corners_3d_pred = torch.sum(gt_mask.unsqueeze(-1).unsqueeze(-1).float()* corners_3d, dim=[1, 2])  # (B,8,3)
 
-    heading_bin_centers = torch.from_numpy(np.arange(0, 2 * np.pi, 2 * np.pi / NUM_HEADING_BIN)).float()  # (NH,)
+    heading_bin_centers = torch.from_numpy(np.arange(0, 2 * np.pi, 2 * np.pi / NUM_HEADING_BIN)).float().to(device)  # (NH,)
     heading_label = heading_residual_label.unsqueeze(1) + heading_bin_centers.unsqueeze(0)  # (B,NH)
 
     heading_label = torch.sum(hcls_onehot.float() * heading_label, 1)
-    mean_sizes = torch.from_numpy(g_mean_size_arr).float().view(1, NUM_SIZE_CLUSTER, 3)  # (1,NS,3)
+    mean_sizes = torch.from_numpy(g_mean_size_arr).float().to(device).view(1, NUM_SIZE_CLUSTER, 3)  # (1,NS,3)
     size_label = mean_sizes + size_residual_label.unsqueeze(1)  # (1,NS,3) + (B,1,3) = (B,NS,3)
     size_label = torch.sum(scls_onehot.float().unsqueeze(-1).float() * size_label, dim=1)  # (B,3)
     corners_3d_gt = get_box3d_corners_helper(center_label, heading_label, size_label)  # (B,8,3)
