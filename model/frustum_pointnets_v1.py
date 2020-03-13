@@ -322,7 +322,7 @@ class FPointNet(nn.Module):
         object_point_cloud_xyz_new = object_point_cloud_xyz - torch.unsqueeze(center_delta,dim=2)                    # -(B,3,1)
 
         # Amodel Box Estimation PointNet
-        output = self.get_3d_box_estimation_v1_net(object_point_cloud_xyz,one_hot_vec)
+        output = self.get_3d_box_estimation_v1_net(object_point_cloud_xyz_new,one_hot_vec)
 
         # parse output to 3D box parameters
         self.end_points = parse_output_to_tensors (output,self.end_points)
@@ -371,6 +371,7 @@ if __name__ =='__main__':
     box_loss_weight = 0.5
 
     total_loss = get_loss(mask_label,center_label,heading_class_label,heading_residual_label,size_class_label,size_residual_label,end_points,corner_loss_weight,box_loss_weight)
-    print(total_loss)
+    #print(total_loss)
     for name , parm in fpointnet.named_parameters():
-        print(name,parm.size(),parm)
+        print(name,parm.size())
+    print(fpointnet)

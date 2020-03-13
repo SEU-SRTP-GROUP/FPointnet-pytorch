@@ -1,2 +1,5 @@
 
 *.pickle
+log/log_train.txt
+*.pyc
+*.pyc
