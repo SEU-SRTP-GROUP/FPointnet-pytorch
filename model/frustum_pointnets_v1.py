@@ -22,7 +22,7 @@ class Config(object):
         self.INPUT_CHANNEL = 4            # 网络输入通道数
         self.OBJECT_INPUT_CHANNEL =3      # center regress 模块的输出通道数  3 = xyz_only
         self.IS_TRAINING = True           # 是否训练 bn 层 在eval的时候应该为 false
-        self.BN_DECAY = 0.9               # bn 层 的 momentum 参数
+        self.BN_DECAY = 0.5               # bn 层 的 momentum 参数
 class FPointNet(nn.Module):
     def __init__(self,config=Config()):
 

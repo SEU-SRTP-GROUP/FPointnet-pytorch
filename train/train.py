@@ -119,7 +119,7 @@ def train():
     for epoch in range(MAX_EPOCH):
         print('epoch: %d' % epoch)
         train_one_epoch(fpointnet, device, optimizer)
-        #eval_one_epoch(fpointnet, device)
+        # eval_one_epoch(fpointnet, device)
         # save the model every 10 epoch
         if (epoch+1)%10 == 0:
             path = os.path.join(MODEL_BASE_DIR,'fpointnet_'+str(datetime.now())+'_epoch'+str(epoch)+'.pth')
@@ -136,6 +136,8 @@ def train_one_epoch(fpointnet,device,optimizer):
     :param device: 设备
     :return:
     '''
+    global EPOCH_CNT
+
     log_string(str(datetime.now()))
     log_string('---- EPOCH %03d TRAINING ----' % (EPOCH_CNT))
     # 按照原始数据集大小进行取值
@@ -183,7 +185,8 @@ def train_one_epoch(fpointnet,device,optimizer):
 
         fpointnet.train()
 
-        # fpointnet.zero_grad()
+        fpointnet.zero_grad()
+
         end_points = fpointnet.forward(pointclouds_pl, one_hot_vec_pl)
         loss = get_loss(labels_pl, centers_pl,\
                   heading_class_label_pl, heading_residual_label_pl,\
@@ -219,6 +222,7 @@ def train_one_epoch(fpointnet,device,optimizer):
                 iou2ds_sum = 0
                 iou3ds_sum = 0
                 iou3d_correct_cnt = 0
+    EPOCH_CNT += 1
 
 def eval_one_epoch(fpointnet,device):
     '''
