@@ -372,3 +372,5 @@ if __name__ =='__main__':
 
     total_loss = get_loss(mask_label,center_label,heading_class_label,heading_residual_label,size_class_label,size_residual_label,end_points,corner_loss_weight,box_loss_weight)
     print(total_loss)
+    for name , parm in fpointnet.named_parameters():
+        print(name,parm.size(),parm)

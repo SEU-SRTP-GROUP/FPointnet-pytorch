@@ -34,7 +34,7 @@ def init_fpointnet(net,use_xavier =True):
     :param net:         要初始化的网络
     :param use_xavier:  使用 xavier_uniform 初始化方式。 如果为ture 就采用pytorch 默认的初始化方式（应该是 uniform?)
     '''
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     if use_xavier:
         for m in net.modules():
             if isinstance(m,nn.Conv2d):                   # 初始化 2D 卷积层
@@ -62,7 +62,7 @@ def gather_object_pc(point_cloud,mask,npoints=512):
                     indices:  int tensor in shape [B,npoint]  important!! 因为 pytorch 和 tensorflow 在
                      gather的 api存在一些差距 n, npoint 表示对每一个batch数据的 index ，采用这种方法 应该 配合 index_select使用 遍历batch
     '''
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = point_cloud.device
     #根据mask 计算 indices
     size = mask.size()
     indices = torch.zeros((size[0],npoints)).to(device)
@@ -103,7 +103,7 @@ def point_cloud_masking(point_cloud, logits, end_points, xyz_only=True):
                     M = NUM_OBJECT_POINT as a hyper-parameter
                     mask_xyz_mean:  tensor in shape (B,3)     the mean value of all points' xyz
     '''
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = point_cloud.device
 
     batch_size = point_cloud.size()[0]
     num_point = point_cloud.size()[2]
@@ -136,7 +136,7 @@ def parse_output_to_tensors(output, end_points):
     :param end_points: dict
     :return: end_points: dict (updated)
     '''
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = output.device
 
     batch_size = output.size()[0]
     center = torch.index_select(output,dim=1,index=torch.arange(0,3).to(device))
@@ -161,8 +161,7 @@ def parse_output_to_tensors(output, end_points):
 
 def get_box3d_corners_helper(centers, headings, sizes):
     """ TF layer. Input: (N,3), (N,), (N,3), Output: (N,8,3) """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+    device = centers.device
     # print '-----', centers
     N = centers.size()[0];
     l = sizes[:, 0].view(N, 1)  # (N,1)
@@ -205,7 +204,7 @@ def get_box3d_corners(center, heading_residuals, size_residuals):
     Outputs:
         box3d_corners: (B,NH,NS,8,3) tensor                NH NS 为开头定义的常量NUM_HEADING_BIN = 12 NUM_SIZE_CLUSTER = 8缩写
     """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = center.device
 
     batch_size = center.size()[0]  # B的值
     heading_bin_centers = torch.from_numpy(np.arange(0, 2 * np.pi, 2 * np.pi / NUM_HEADING_BIN)).float().to(device)  # (NH,)
@@ -258,7 +257,7 @@ def get_loss(mask_label, center_label, \
         total_loss: scalar tensor
             the total_loss is also added to the losses collection
     '''
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = mask_label.device
     # 3D Segmentation loss
     # tf.reduce_mean(input_tensor, reduction_indices=None)求平均值，
     # 若reduction_indices有值则在这个维度求均值
