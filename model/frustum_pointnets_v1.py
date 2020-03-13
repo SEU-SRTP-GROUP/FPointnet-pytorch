@@ -22,7 +22,7 @@ class Config(object):
         self.INPUT_CHANNEL = 4            # 网络输入通道数
         self.OBJECT_INPUT_CHANNEL =3      # center regress 模块的输出通道数  3 = xyz_only
         self.IS_TRAINING = True           # 是否训练 bn 层 在eval的时候应该为 false
-        self.BN_DECAY = 0.9               # bn 层 的 momentum 参数
+        self.BN_DECAY = 0.5               # bn 层 的 momentum 参数
 class FPointNet(nn.Module):
     def __init__(self,config=Config()):
 
@@ -322,7 +322,7 @@ class FPointNet(nn.Module):
         object_point_cloud_xyz_new = object_point_cloud_xyz - torch.unsqueeze(center_delta,dim=2)                    # -(B,3,1)
 
         # Amodel Box Estimation PointNet
-        output = self.get_3d_box_estimation_v1_net(object_point_cloud_xyz,one_hot_vec)
+        output = self.get_3d_box_estimation_v1_net(object_point_cloud_xyz_new,one_hot_vec)
 
         # parse output to 3D box parameters
         self.end_points = parse_output_to_tensors (output,self.end_points)
@@ -371,6 +371,6 @@ if __name__ =='__main__':
     box_loss_weight = 0.5
 
     total_loss = get_loss(mask_label,center_label,heading_class_label,heading_residual_label,size_class_label,size_residual_label,end_points,corner_loss_weight,box_loss_weight)
-    print(total_loss)
+    # print(total_loss)
     for name , parm in fpointnet.named_parameters():
         print(name,parm.size(),parm)
