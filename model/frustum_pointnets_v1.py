@@ -16,6 +16,7 @@ from model_util import init_fpointnet
 from model_util import get_loss
 from model_util import conv2d_block , full_connected_block
 class Config(object):
+
     def __init__(self):
         '''
         说明： 配置类，保存着 FPointNet所需要的所有参数，如果需要参数就在Config类的构造函数里面加,参数用大写加下划线表示 eg: IS_TRAINING, BN_DECAY

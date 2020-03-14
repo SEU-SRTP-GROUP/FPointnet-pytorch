@@ -13,6 +13,7 @@ NUM_OBJECT_POINT = 512
 g_type2class={'Car':0, 'Van':1, 'Truck':2, 'Pedestrian':3,
               'Person_sitting':4, 'Cyclist':5, 'Tram':6, 'Misc':7}
 g_class2type = {g_type2class[t]:t for t in g_type2class}#与上面相反，数字对应字符串
+
 g_type2onehotclass = {'Car': 0, 'Pedestrian': 1, 'Cyclist': 2}
 #np.array,存储单一数据类型的多维数组,避免浪费内存和CPU。
 g_type_mean_size = {'Car': np.array([3.88311640418,1.62856739989,1.52563191462]),
@@ -24,6 +25,7 @@ g_type_mean_size = {'Car': np.array([3.88311640418,1.62856739989,1.52563191462])
                     'Tram': np.array([16.17150617,2.53246914,3.53079012]),
                     'Misc': np.array([3.64300781,1.54298177,1.92320313])}
 g_mean_size_arr = np.zeros((NUM_SIZE_CLUSTER, 3)) #   size clustrs
+
 #array([[ 0.,  0.,  0.],[ 0.,  0.,  0.],[ 0.,  0.,  0.],[ 0.,  0.,  0.],[ 0.,  0.,  0.],[ 0.,  0.,  0.],[ 0.,  0.,  0.],[ 0.,  0.,  0.]])
 for i in range(NUM_SIZE_CLUSTER):
     g_mean_size_arr[i,:] = g_type_mean_size[g_class2type[i]]
@@ -326,7 +328,7 @@ def get_loss(mask_label, center_label, \
     scls_onehot_tiled = scls_onehot.float().unsqueeze(1).repeat(1,3,1).to(device)
     # Bx1*NUM_SIZE_CLUSTER
     # Bx3xNUM_SIZE_CLUSTER
-    predicted_size_residual_normalized = torch.sum(end_points['size_residuals_normalized'] * scls_onehot_tiled, dim=2)  # Bx3
+    predicted_size_residual_normalized = torch.sum(end_points['size_residuals_normalized'] * scls_onehot_tiled, dim=2)  # Bx3  ,这里只取正确的值
     mean_size_arr_expand = torch.from_numpy(g_mean_size_arr).float().unsqueeze(0).to(device)     # 1xNUM_SIZE_CLUSTERx3
     mean_size_arr_expand =  mean_size_arr_expand.permute(0,2,1)                                      # change shape to 1*3*NUN_SIZE_CLUSTER
     mean_size_label = torch.sum(scls_onehot_tiled * mean_size_arr_expand, dim=2).to(device)  # Bx3
