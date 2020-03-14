@@ -144,7 +144,7 @@ class FPointNet(nn.Module):
                                              conv_parm_dict=conv_parm_dict,
                                              bn_parm_dict=bn_parm_dict)
 
-        self.fc_3dbox_1  = full_connected_block("3dbox5 ",512,512,self.config.USE_BN,
+        self.fc_3dbox_1  = full_connected_block("3dbox5 ",515,512,self.config.USE_BN,
                                                      bn_parm_dict=bn_parm_dict)
         self.fc_3dbox_2  =  full_connected_block("3dbox6 ",512,256,self.config.USE_BN,
                                                      bn_parm_dict=bn_parm_dict)
