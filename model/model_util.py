@@ -5,6 +5,8 @@ import torch.nn.functional as F
 import os
 import sys
 import torch
+from collections import OrderedDict
+
 NUM_HEADING_BIN = 12
 NUM_SIZE_CLUSTER = 8 # one cluster for each type 每种类型一个集群
 NUM_OBJECT_POINT = 512
@@ -26,6 +28,62 @@ g_mean_size_arr = np.zeros((NUM_SIZE_CLUSTER, 3)) #   size clustrs
 for i in range(NUM_SIZE_CLUSTER):
     g_mean_size_arr[i,:] = g_type_mean_size[g_class2type[i]]
     #copy
+
+def conv2d_block(name,in_channels,out_channels ,kernel_size ,use_bn=True ,*, conv_parm_dict =None ,bn_parm_dict= None,activation_fn = nn.ReLU()):
+    '''
+    conv_parm_dict 后的参数都是命名关键字参数
+    @ author chonepieceyb
+    :param name : name of this block
+    :param in_channels:   (python:int) – Number of channels in the input image
+    :param out_channels:    (python:int) – Number of channels produced by the convolution
+    :param kernel_size:    (python:int or tuple) – Size of the convolving kerne
+    :param use_bn:    whether to add bn layer
+    :param activation_fn:   the activation function , object of torch Activation Function
+    :param conv_parm_dict:  addition parameters of conv2d layer key word parameters  eg   conv_parm_dict ={'stride':1,'padding':0}
+    :param bn_parm_dict:    addition parameters of bn layer key word parameters  eg   bn_parm_dict ={'momentum':0.9}
+    :return:
+    '''
+    layers = OrderedDict()
+    if conv_parm_dict != None:
+        layers['conv2d_'+ name] = nn.Conv2d(in_channels,out_channels,kernel_size,**conv_parm_dict)
+    else:
+        layers['conv2d_' + name] = nn.Conv2d(in_channels, out_channels, kernel_size)
+    if use_bn:
+        # 如果使用 bn层
+        if bn_parm_dict !=None:
+            layers['bn_'+name] = nn.BatchNorm2d(out_channels,**bn_parm_dict)
+        else:
+            layers['bn_' + name] = nn.BatchNorm2d(out_channels)
+    if activation_fn != None:
+        layers[activation_fn.__class__.__name__+"_"+name]   = activation_fn
+    return nn.Sequential(layers)
+
+def full_connected_block(name,in_features,out_features ,use_bn=True ,*, linear_parm_dict =None ,bn_parm_dict= None,activation_fn = nn.ReLU()):
+    '''
+    @author chonepieceyb
+    :param name:  名称
+    :param in_features:  size of each input sample
+    :param out_channels: size of each output sample
+    :param use_bn:  whether to add bn layer
+    :param linear_parm_dict:  as conv block
+    :param bn_parm_dict:      as conv block
+    :param activation_fn:     as conv block
+    :return:
+    '''
+    layers = OrderedDict()
+    if linear_parm_dict != None:
+        layers['fc_' + name] = nn.Linear(in_features, out_features, **linear_parm_dict)
+    else:
+        layers['fc_' + name] = nn.Linear(in_features, out_features)
+    if use_bn:
+        # 如果使用 bn层
+        if bn_parm_dict != None:
+            layers['bn_' + name] = nn.BatchNorm1d(out_features, **bn_parm_dict)
+        else:
+            layers['bn_' + name] = nn.BatchNorm1d(out_features)
+    if activation_fn != None:
+        layers[activation_fn.__class__.__name__ + "_" + name] = activation_fn
+    return nn.Sequential(layers)
 
 def init_fpointnet(net,use_xavier =True):
     '''

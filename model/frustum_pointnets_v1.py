@@ -14,6 +14,7 @@ from model_util import point_cloud_masking
 from model_util import parse_output_to_tensors
 from model_util import init_fpointnet
 from model_util import get_loss
+from model_util import conv2d_block , full_connected_block
 class Config(object):
     def __init__(self):
         '''
@@ -22,7 +23,9 @@ class Config(object):
         self.INPUT_CHANNEL = 4            # 网络输入通道数
         self.OBJECT_INPUT_CHANNEL =3      # center regress 模块的输出通道数  3 = xyz_only
         self.IS_TRAINING = True           # 是否训练 bn 层 在eval的时候应该为 false
+        self.USE_BN = True
         self.BN_DECAY = 0.5               # bn 层 的 momentum 参数
+
 class FPointNet(nn.Module):
     def __init__(self,config=Config()):
 
@@ -49,96 +52,53 @@ class FPointNet(nn.Module):
         #author: Qiao
         实例分割模块用到的层
         '''
-        self.get_instance_seg_1 = torch.nn.Sequential(
-            OrderedDict(
-                [
-                    ("conv_seg_1", torch.nn.Conv2d(self.config.INPUT_CHANNEL,
-                                              64, 1, stride=1, padding=0)),
-                    ("bn_seg_1", torch.nn.BatchNorm2d(64,
-                                                      momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-                    ("relu_seg_1",torch.nn.ReLU()),
-                ]))
-        self.get_instance_seg_2 = torch.nn.Sequential(
-            OrderedDict(
-                [
-                    ("conv_seg_2", torch.nn.Conv2d(64,
-                                              64, 1, stride=1, padding=0)),
-                    ("bn_seg_2", torch.nn.BatchNorm2d(64,
-                                                      momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-                    ("relu_seg_2",torch.nn.ReLU()),
-                ]))
-        # 这一层就结束得到64维局部特征point_feature
-        self.get_instance_seg_3 = torch.nn.Sequential(
-            OrderedDict(
-                [
-                    ("conv_seg_3", torch.nn.Conv2d(64,
-                                              64, 1, stride=1, padding=0)),
-                    ("bn_seg_3", torch.nn.BatchNorm2d(64,
-                                                      momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-                    ("relu_seg_3",torch.nn.ReLU()),
-                ]))
-        # 这一层就结束得到1024维全局特征global_feature
-        self.get_instance_seg_4 = torch.nn.Sequential(
-            OrderedDict(
-                [
-                    ("conv_seg_4", torch.nn.Conv2d(64,
-                                              128, 1, stride=1, padding=0)),
-                    ("bn_seg_4", torch.nn.BatchNorm2d(128,
-                                                      momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-                    ("relu_seg_4",torch.nn.ReLU()),
-                ]))
-        self.get_instance_seg_5 = torch.nn.Sequential(
-            OrderedDict(
-                [
-                    ("conv_seg_5", torch.nn.Conv2d(128,
-                                              1024, 1, stride=1, padding=0)),
-                    ("bn_seg_5", torch.nn.BatchNorm2d(1024,
-                                                      momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-                    ("relu_seg_5",torch.nn.ReLU()),
-                ]))
-        # 然后需要拼接两个特征变成一个1088维的
+        conv_parm_dict={"stride":1,"padding":0}
+        bn_parm_dict = {"momentum": self.config.BN_DECAY, "affine": self.config.IS_TRAINING}
 
-        self.get_instance_seg_6 = torch.nn.Sequential(
-            OrderedDict(
-                [
-                    ("conv_seg_6", torch.nn.Conv2d(1088+3,
-                                              512, 1, stride=1, padding=0)),
-                    ("bn_seg_6", torch.nn.BatchNorm2d(512,
-                                                      momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-                    ("relu_seg_6",torch.nn.ReLU()),
-                ]))
-        self.get_instance_seg_7 = torch.nn.Sequential(
-            OrderedDict(
-                [
-                    ("conv_seg_7", torch.nn.Conv2d(512,
-                                              256, 1, stride=1, padding=0)),
-                    ("bn_seg_7", torch.nn.BatchNorm2d(256,
-                                                      momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-                    ("relu_seg_7",torch.nn.ReLU()),
-                ]))
-        self.get_instance_seg_8 = torch.nn.Sequential(
-            OrderedDict(
-                [
-                    ("conv_seg_8", torch.nn.Conv2d(256,
-                                              128, 1, stride=1, padding=0)),
-                    ("bn_seg_8", torch.nn.BatchNorm2d(128,
-                                                      momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-                    ("relu_seg_8",torch.nn.ReLU()),
-                ]))
-        self.get_instance_seg_9 = torch.nn.Sequential(
-            OrderedDict(
-                [
-                    ("conv_seg_9", torch.nn.Conv2d(128,
-                                              128, 1, stride=1, padding=0)),
-                    ("bn_seg_9", torch.nn.BatchNorm2d(128,
-                                                      momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-                    ("relu_seg_9",torch.nn.ReLU()),
-                ]))
+        self.get_instance_seg_1 = conv2d_block("seg1",self.config.INPUT_CHANNEL,64,1, self.config.USE_BN ,
+                                                    conv_parm_dict=conv_parm_dict,
+                                                    bn_parm_dict=bn_parm_dict)
+
+        self.get_instance_seg_2 = conv2d_block("seg2",64,64,1, self.config.USE_BN  ,
+                                                    conv_parm_dict=conv_parm_dict,
+                                                    bn_parm_dict=bn_parm_dict)
+
+        # 这一层就结束得到64维局部特征point_feature
+        self.get_instance_seg_3 = conv2d_block("seg3",64,64,1, self.config.USE_BN  ,
+                                                    conv_parm_dict=conv_parm_dict,
+                                                    bn_parm_dict=bn_parm_dict)
+
+        self.get_instance_seg_4 = conv2d_block("seg4",64,128,1, self.config.USE_BN  ,
+                                                    conv_parm_dict=conv_parm_dict,
+                                                    bn_parm_dict=bn_parm_dict)
+        # 这一层就结束得到1024维全局特征global_feature
+        self.get_instance_seg_5 = conv2d_block("seg5",128,1024,1, self.config.USE_BN  ,
+                                                    conv_parm_dict=conv_parm_dict,
+                                                    bn_parm_dict=bn_parm_dict)
+
+        # 然后需要拼接两个特征变成一个1088维的
+        self.get_instance_seg_6 =  conv2d_block("seg6",1088+3,512,1, self.config.USE_BN  ,
+                                                    conv_parm_dict=conv_parm_dict,
+                                                    bn_parm_dict=bn_parm_dict)
+
+        self.get_instance_seg_7 = conv2d_block("seg7",512,256,1, self.config.USE_BN  ,
+                                                    conv_parm_dict=conv_parm_dict,
+                                                    bn_parm_dict=bn_parm_dict)
+
+        self.get_instance_seg_8 =  conv2d_block("seg8",256,128,1, self.config.USE_BN  ,
+                                                    conv_parm_dict=conv_parm_dict,
+                                                    bn_parm_dict=bn_parm_dict)
+
+        self.get_instance_seg_9 = conv2d_block("seg9",128,128,1, self.config.USE_BN  ,
+                                                    conv_parm_dict=conv_parm_dict,
+                                                    bn_parm_dict=bn_parm_dict)
+
         self.get_instance_seg_dp_1 = torch.nn.Sequential(
             OrderedDict(
                 [
                     ("dp_seg_1", torch.nn.Dropout(p=0.5))
                 ]))
+
         self.get_instance_seg_10 = torch.nn.Sequential(
             OrderedDict(
                 [
@@ -150,63 +110,45 @@ class FPointNet(nn.Module):
 
         ##############   T-Net 参数模块  ######################
 
-        self.conv_Tnet_1 =nn.Sequential(OrderedDict([
-            ('conv_Tnet_1', nn.Conv2d(self.config.OBJECT_INPUT_CHANNEL, 128, [1, 1])),
-            ('bn_Tnet_1', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-            ('relu_Tnet_1', nn.ReLU()),
-        ]))
-        self.conv_Tnet_2 = nn.Sequential(OrderedDict([
-            ('conv_Tnet_2', nn.Conv2d(128, 128, [1, 1])),
-            ('bn_Tnet_2', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-            ('relu_Tnet_2', nn.ReLU()),
-        ]))
-        self.conv_Tnet_3 = nn.Sequential(OrderedDict([
-            ('conv_Tnet_3', nn.Conv2d(128, 256, [1, 1])),
-            ('bn_Tnet_3', nn.BatchNorm2d(256, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-            ('relu_Tnet_3', nn.ReLU()),
-        ]))
-        self.fc_Tnet_1 = nn.Sequential(OrderedDict([
-            ('fc_Tnet_1', nn.Linear(256+3, 256)),
-            ('bn_Tnet_4', nn.BatchNorm1d(256, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-            ('relu_Tnet_4', nn.ReLU()),
-        ]))
-        self.fc_Tnet_2 = nn.Sequential(OrderedDict([
-            ('fc_Tnet_2', nn.Linear(256, 128)),
-            ('bn_Tnet_5', nn.BatchNorm1d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-            ('relu_Tnet_5', nn.ReLU()),
-        ]))
+        self.conv_Tnet_1 = conv2d_block("Tnet1",self.config.OBJECT_INPUT_CHANNEL,128,[1,1], self.config.USE_BN  ,
+                                                    conv_parm_dict=conv_parm_dict,
+                                                    bn_parm_dict=bn_parm_dict)
+
+        self.conv_Tnet_2 = conv2d_block("Tnet2",128,128,[1,1], self.config.USE_BN  ,
+                                                    conv_parm_dict=conv_parm_dict,
+                                                    bn_parm_dict=bn_parm_dict)
+
+        self.conv_Tnet_3 = conv2d_block("Tnet3", 128, 256, [1, 1], self.config.USE_BN,
+                                             conv_parm_dict=conv_parm_dict,
+                                             bn_parm_dict=bn_parm_dict)
+
+        self.fc_Tnet_1   = full_connected_block("Tnet4",256+3,256,self.config.USE_BN,
+                                                     bn_parm_dict=bn_parm_dict)
+
+        self.fc_Tnet_2   = full_connected_block("Tnet5",256,128,self.config.USE_BN)
+
         self.fc_Tnet_3 = nn.Linear(128,3)
         ##############   3d box 回归参数 ######################
-        self.conv_3dbox_1 = nn.Sequential(OrderedDict([
-            ('conv_3dbox_1', nn.Conv2d(3, 128, [1, 1])),
-            ('bn_3dbox_1', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-            ('relu_3dbox_1', nn.ReLU()),
-        ]))
-        self.conv_3dbox_2 = nn.Sequential(OrderedDict([
-            ('conv_3dbox_2', nn.Conv2d(128, 128, [1, 1])),
-            ('bn_3dbox_2', nn.BatchNorm2d(128, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-            ('relu_3dbox_2', nn.ReLU()),
-        ]))
-        self.conv_3dbox_3 = nn.Sequential(OrderedDict([
-            ('conv_3dbox_3', nn.Conv2d(128, 256, [1, 1])),
-            ('bn_3dbox_3', nn.BatchNorm2d(256, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-            ('relu_3dbox_3', nn.ReLU()),
-        ]))
-        self.conv_3dbox_4 = nn.Sequential(OrderedDict([
-            ('conv_3dbox_4', nn.Conv2d(256, 512, [1, 1])),
-            ('bn_3dbox_4', nn.BatchNorm2d(512, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-            ('relu_3dbox_4', nn.ReLU()),
-        ]))
-        self.fc_3dbox_1 = nn.Sequential(OrderedDict([
-            ('fc_3dbox_1', nn.Linear(515, 512)),
-            ('bn_3dbox_5', nn.BatchNorm1d(512, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-            ('relu_3dbox_5', nn.ReLU()),
-        ]))
-        self.fc_3dbox_2 = nn.Sequential(OrderedDict([
-            ('fc_3dbox_2', nn.Linear(512, 256)),
-            ('bn_3dbox_6', nn.BatchNorm1d(256, momentum=self.config.BN_DECAY, affine=self.config.IS_TRAINING)),
-            ('relu_3dbox_6', nn.ReLU()),
-        ]))
+        self.conv_3dbox_1 = conv2d_block("3dbox1", 3, 128, [1, 1], self.config.USE_BN,
+                                             conv_parm_dict=conv_parm_dict,
+                                             bn_parm_dict=bn_parm_dict)
+
+        self.conv_3dbox_2 = conv2d_block("3dbox2", 128, 128, [1, 1], self.config.USE_BN,
+                                             conv_parm_dict=conv_parm_dict,
+                                             bn_parm_dict=bn_parm_dict)
+
+        self.conv_3dbox_3 = conv2d_block("3dbox3", 128,256, [1, 1], self.config.USE_BN,
+                                             conv_parm_dict=conv_parm_dict,
+                                             bn_parm_dict=bn_parm_dict)
+        self.conv_3dbox_4 = conv2d_block("3dbox4", 256,512, [1, 1], self.config.USE_BN,
+                                             conv_parm_dict=conv_parm_dict,
+                                             bn_parm_dict=bn_parm_dict)
+
+        self.fc_3dbox_1  = full_connected_block("3dbox5 ",512,512,self.config.USE_BN,
+                                                     bn_parm_dict=bn_parm_dict)
+        self.fc_3dbox_2  =  full_connected_block("3dbox6 ",512,256,self.config.USE_BN,
+                                                     bn_parm_dict=bn_parm_dict)
+
         self.fc_3dbox_3 = nn.Linear(256, 3 + NUM_HEADING_BIN * 2 + NUM_SIZE_CLUSTER * 4)
 
     def get_instance_seg_v1_net(self, point_cloud, one_hot_vec):
