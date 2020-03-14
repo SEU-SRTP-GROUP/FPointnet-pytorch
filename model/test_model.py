@@ -40,7 +40,13 @@ class TestingUtil(object):
         self.NUM_CHANNEL = 4         #加上雷达强度
         self.normal_mean = 0         #正态分布的均值
         self.normal_var =1           #正态分布的方差
-        self.shift = 0.001
+        self.negative_low = 0
+        self.negative_high = 0.3
+        self.positive_low = 0.7
+        self.positive_high = 1.0
+        self.shift = 0.001           #回归偏置
+        self.class_low = 0.1       #分类偏置  0.1 / 0.9
+        self.class_high =0.9
     def get_batch_data(self,batch_size,batch_index = 0 ,shuffled =False,*, add_noise=False , datyType ="np",device ='cpu'):
         '''
         @ author chonepieceyb 从数据集中获取 数据
@@ -59,7 +65,9 @@ class TestingUtil(object):
                      size_residuals_normalized_label ： 正则化后的box size 残差项         shape(B,3)
                      size_residuals_label:     未正则化项                                shape(B,3)
                      center_label            : 全局坐标             （B,3)
-
+                }
+                end_points
+                {
                      mask_logits : tensor in shape (B,2,N)
                      mask:   (B,N)   dim=1  1： 选中 0:不选中  和 mask_label完全相同
                      stage1_center : 每一个proposal的估计的中心坐标  shape (B,3)
@@ -127,15 +135,18 @@ class TestingUtil(object):
         # mask
         # 使用向量化函数
         # 采用 均匀分布 来获取mask_logist
-        func = lambda x : np.random.uniform(0,0.5) if x<0.5 else np.random.uniform(0.5,1)
-        vfun = np.vectorize(func,otypes=[np.float32])
-        mask_logits = convert_to_one_hot(2,batch_label,dim=1)
-        mask_logits = vfun(mask_logits)
-        end_points["mask_logits"] = mask_logits
-        end_points["mask"] = batch_label                   # 这里注意
+
+
 
         #计算随机center
         if add_noise == True:
+            func = lambda x: np.random.uniform(self.negative_low, self.negative_high) if x < 0.5 else np.random.uniform(self.positive_low, self.positive_high)
+            vfun = np.vectorize(func, otypes=[np.float32])
+            mask_logits = convert_to_one_hot(2, batch_label, dim=1)
+            mask_logits = vfun(mask_logits)
+            end_points["mask_logits"] = mask_logits
+            end_points["mask"] = batch_label  # 这里注意
+
             end_points['center'] = batch_center + np.random.normal(self.normal_mean,self.normal_var,batch_center.shape)     # 给 center标签加上高斯噪声，获取 “预测的 center"
             center_boxnet = np.random.normal(self.normal_mean,self.normal_var,batch_center.shape)               # 用 高斯噪声 假设为 预测的残差
             end_points['center_boxnet'] = center_boxnet        # 这个应该允许负值，因为已经在局部坐标系里了
@@ -163,6 +174,13 @@ class TestingUtil(object):
             end_points["size_residuals"] = size_residuals
             end_points["size_residuals_normalized"] = size_residuals / mean_size_arr
         else:
+            func = lambda x:self.class_low if x < 0.5 else self.class_high
+            vfun = np.vectorize(func, otypes=[np.float32])
+            mask_logits = convert_to_one_hot(2, batch_label, dim=1)
+            mask_logits = vfun(mask_logits)
+            end_points["mask_logits"] = mask_logits
+            end_points["mask"] = batch_label  # 这里注意
+
             end_points['center'] = batch_center + self.shift # 给 center标签加上高斯噪声，获取 “预测的 center"
             center_boxnet = np.ones_like(batch_center) * self.shift  # 用 高斯噪声 假设为 预测的残差
             end_points['center_boxnet'] = center_boxnet  # 这个应该允许负值，因为已经在局部坐标系里了
@@ -210,8 +228,22 @@ if __name__ == '__main__':
              heading_class_label, heading_residual_label, \
              size_class_label, size_residual_label
     '''
+    print("############### heading class ###################")
+    print(data['heading_class_label'])
+    print(end_points['heading_scores'])
+
+    print("############### heading_residuals ###################")
+    print(data['heading_residuals_label'])
+    print(end_points['heading_residuals'])
+
+    print("############### size_class ###################")
+    print(data['size_class_label'])
+    print(end_points['size_scores'])
+
+    print("############### size_residuals ###################")
     print(data['size_residuals_label'])
     print(end_points['size_residuals'])
+
     for value in end_points.values():
         print(value.dtype)
     print(get_loss(data['mask_label'].type(torch.LongTensor),data['center_label'].type(torch.float32),
