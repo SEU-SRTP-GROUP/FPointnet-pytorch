@@ -40,7 +40,8 @@ class TestingUtil(object):
         self.NUM_CHANNEL = 4         #加上雷达强度
         self.normal_mean = 0         #正态分布的均值
         self.normal_var =1           #正态分布的方差
-    def get_batch_data(self,batch_size,batch_index = 0 ,shuffled =False,*, datyType ="np",device ='cpu'):
+        self.shift = 0.001
+    def get_batch_data(self,batch_size,batch_index = 0 ,shuffled =False,*, add_noise=False , datyType ="np",device ='cpu'):
         '''
         @ author chonepieceyb 从数据集中获取 数据
         :param batch_size:  batch 的数目
@@ -134,28 +135,60 @@ class TestingUtil(object):
         end_points["mask"] = batch_label                   # 这里注意
 
         #计算随机center
-        end_points['center'] = batch_center + np.random.normal(self.normal_mean,self.normal_var,batch_center.shape)     # 给 center标签加上高斯噪声，获取 “预测的 center"
-        center_boxnet = np.random.normal(self.normal_mean,self.normal_var,batch_center.shape)               # 用 高斯噪声 假设为 预测的残差
-        end_points['center_boxnet'] = center_boxnet        # 这个应该允许负值，因为已经在局部坐标系里了
-        end_points['stage1_center'] = end_points['center'] - center_boxnet
+        if add_noise == True:
+            end_points['center'] = batch_center + np.random.normal(self.normal_mean,self.normal_var,batch_center.shape)     # 给 center标签加上高斯噪声，获取 “预测的 center"
+            center_boxnet = np.random.normal(self.normal_mean,self.normal_var,batch_center.shape)               # 用 高斯噪声 假设为 预测的残差
+            end_points['center_boxnet'] = center_boxnet        # 这个应该允许负值，因为已经在局部坐标系里了
+            end_points['stage1_center'] = end_points['center'] - center_boxnet
 
-        #计算随机的 heading
-        angle_per_class = 2*np.pi / NUM_HEADING_BIN
-        heading_scores_one_hot = convert_to_one_hot(NUM_HEADING_BIN,data['heading_class_label'],dim=1)    # (B, NC)
-        end_points["heading_scores"] = vfun(heading_scores_one_hot)
-        heading_residuals = np.tile(np.expand_dims(batch_hres,axis=1),(1,NUM_HEADING_BIN))                                        # (B,NC)
-        heading_residuals = ( heading_residuals + (angle_per_class/2)*(np.random.normal(self.normal_mean,self.normal_var,heading_residuals.shape)) ) % (angle_per_class/2)   # (B,NC)添加高斯噪声,待研究
-        heading_residuals = heading_residuals * heading_scores_one_hot                                    # (B,NC)   屏蔽掉 不是 1 的 ，因为 在损失函数中 只有正确的项 有贡献
-        end_points["heading_residuals"]  = heading_residuals
-        end_points["heading_residuals_normalized"]  = heading_residuals / (np.pi/NUM_HEADING_BIN)
+            # 计算随机的 heading
+            angle_per_class = 2 * np.pi / NUM_HEADING_BIN
+            heading_scores_one_hot = convert_to_one_hot(NUM_HEADING_BIN, data['heading_class_label'], dim=1)  # (B, NC)
+            end_points["heading_scores"] = vfun(heading_scores_one_hot)
+            heading_residuals = np.tile(np.expand_dims(batch_hres, axis=1), (1, NUM_HEADING_BIN))  # (B,NC)
+            heading_residuals = (heading_residuals + (angle_per_class / 2) * (
+                np.random.normal(self.normal_mean, self.normal_var, heading_residuals.shape))) % (
+                                            angle_per_class / 2)  # (B,NC)添加高斯噪声,待研究
+            heading_residuals = heading_residuals * heading_scores_one_hot  # (B,NC)   屏蔽掉 不是 1 的 ，因为 在损失函数中 只有正确的项 有贡献
+            end_points["heading_residuals"] = heading_residuals
+            end_points["heading_residuals_normalized"] = heading_residuals / (np.pi / NUM_HEADING_BIN)
 
-        #计算随机的size
-        end_points["size_scores"] = vfun(size_label_onehot)                                                      # (B,NC)
-        size_residuals =  np.tile(np.expand_dims(batch_sres,axis=2),(1,1,NUM_SIZE_CLUSTER))                           # (B,3,1) -> (B,3,NC)
-        size_residuals = size_residuals + np.random.normal(self.normal_mean,self.normal_var,size_residuals.shape)     # 添加高斯噪声   (B,3,NC)
-        size_residuals =size_residuals *  size_label_onehot_tailed  # (B,3,NC)   屏蔽掉 不是 1 的 ，因为 在损失函数中 只有正确的项 有贡献
-        end_points["size_residuals"] = size_residuals
-        end_points["size_residuals_normalized"] = size_residuals / mean_size_arr
+            # 计算随机的size
+            end_points["size_scores"] = vfun(size_label_onehot)  # (B,NC)
+            size_residuals = np.tile(np.expand_dims(batch_sres, axis=2),
+                                     (1, 1, NUM_SIZE_CLUSTER))  # (B,3,1) -> (B,3,NC)
+            size_residuals = size_residuals + np.random.normal(self.normal_mean, self.normal_var,
+                                                               size_residuals.shape)  # 添加高斯噪声   (B,3,NC)
+            size_residuals = size_residuals * size_label_onehot_tailed  # (B,3,NC)   屏蔽掉 不是 1 的 ，因为 在损失函数中 只有正确的项 有贡献
+            end_points["size_residuals"] = size_residuals
+            end_points["size_residuals_normalized"] = size_residuals / mean_size_arr
+        else:
+            end_points['center'] = batch_center + self.shift # 给 center标签加上高斯噪声，获取 “预测的 center"
+            center_boxnet = np.ones_like(batch_center) * self.shift  # 用 高斯噪声 假设为 预测的残差
+            end_points['center_boxnet'] = center_boxnet  # 这个应该允许负值，因为已经在局部坐标系里了
+            end_points['stage1_center'] = end_points['center'] - center_boxnet
+
+            # 计算随机的 heading
+            angle_per_class = 2 * np.pi / NUM_HEADING_BIN
+            heading_scores_one_hot = convert_to_one_hot(NUM_HEADING_BIN, data['heading_class_label'], dim=1)  # (B, NC)
+            end_points["heading_scores"] = vfun(heading_scores_one_hot)
+            heading_residuals = np.tile(np.expand_dims(batch_hres, axis=1), (1, NUM_HEADING_BIN))  # (B,NC)
+            heading_residuals = (heading_residuals + (angle_per_class / 2) * (
+                self.shift)) % (
+                                        angle_per_class / 2)  # (B,NC)添加高斯噪声,待研究
+            heading_residuals = heading_residuals * heading_scores_one_hot  # (B,NC)   屏蔽掉 不是 1 的 ，因为 在损失函数中 只有正确的项 有贡献
+            end_points["heading_residuals"] = heading_residuals
+            end_points["heading_residuals_normalized"] = heading_residuals / (np.pi / NUM_HEADING_BIN)
+
+            # 计算随机的size
+            end_points["size_scores"] = vfun(size_label_onehot)  # (B,NC)
+            size_residuals = np.tile(np.expand_dims(batch_sres, axis=2),
+                                     (1, 1, NUM_SIZE_CLUSTER))  # (B,3,1) -> (B,3,NC)
+            size_residuals = size_residuals + self.shift # 添加高斯噪声   (B,3,NC)
+            size_residuals = size_residuals * size_label_onehot_tailed  # (B,3,NC)   屏蔽掉 不是 1 的 ，因为 在损失函数中 只有正确的项 有贡献
+            end_points["size_residuals"] = size_residuals
+            end_points["size_residuals_normalized"] = size_residuals / mean_size_arr
+
 
         if datyType =="torch" :
             for key , value in data.items():
@@ -177,6 +210,8 @@ if __name__ == '__main__':
              heading_class_label, heading_residual_label, \
              size_class_label, size_residual_label
     '''
+    print(data['size_residuals_label'])
+    print(end_points['size_residuals'])
     for value in end_points.values():
         print(value.dtype)
     print(get_loss(data['mask_label'].type(torch.LongTensor),data['center_label'].type(torch.float32),
