@@ -186,7 +186,6 @@ def point_cloud_masking(point_cloud, logits, end_points, xyz_only=True):
         point_cloud_stage1 = torch.cat((point_cloud_xyz_stage1,point_cloud_features),dim=1)   #   (B,C,N)
     num_channels = point_cloud_stage1.size()[1]
     object_point_cloud ,_= gather_object_pc(point_cloud_stage1,mask,NUM_OBJECT_POINT)
-    object_point_cloud.view((batch_size,num_channels,NUM_OBJECT_POINT))
     return object_point_cloud, torch.squeeze(mask_xyz_mean,dim=2),end_points
 
 def parse_output_to_tensors(output, end_points):
@@ -211,7 +210,7 @@ def parse_output_to_tensors(output, end_points):
         heading_residuals_normalized * (np.pi / NUM_HEADING_BIN)  # BxNUM_HEADING_BIN
     size_scores = torch.index_select(output,dim=1,index=torch.arange( 3+2*NUM_HEADING_BIN, 3+2*NUM_HEADING_BIN+NUM_SIZE_CLUSTER).to(device))
     size_residuals_normalized =  torch.index_select(output,dim=1,index=torch.arange( 3+2*NUM_HEADING_BIN+NUM_SIZE_CLUSTER, 3+2*NUM_HEADING_BIN+4*NUM_SIZE_CLUSTER).to(device))
-    size_residuals_normalized = size_residuals_normalized.view((batch_size,3,NUM_SIZE_CLUSTER))
+    size_residuals_normalized = size_residuals_normalized.view((batch_size,NUM_SIZE_CLUSTER,3)).permute(0,2,1)
     end_points['size_scores'] = size_scores
     end_points['size_residuals_normalized'] = size_residuals_normalized
     g_mean_size_arr_tensor =  torch.tensor(g_mean_size_arr,dtype=torch.float32).permute(1,0).to(device)
@@ -275,7 +274,7 @@ def get_box3d_corners(center, heading_residuals, size_residuals):
     centers = center.unsqueeze(1).unsqueeze(1).repeat(1, NUM_HEADING_BIN, NUM_SIZE_CLUSTER, 1)  # (B,NH,NS,3)
 
     N = batch_size * NUM_HEADING_BIN * NUM_SIZE_CLUSTER
-    corners_3d = get_box3d_corners_helper(centers.view(N, 3), headings.view(N),sizes.view( N, 3))
+    corners_3d = get_box3d_corners_helper(centers.view(N, 3), headings.view(N),sizese( N, 3))
     return corners_3d.view(batch_size, NUM_HEADING_BIN, NUM_SIZE_CLUSTER, 8, 3)
 
 
@@ -369,4 +368,4 @@ def get_loss(mask_label, center_label, \
         'stage1_center_loss': box_loss_weight * size_residual_normalized_loss * 20,
         'corners_loss': box_loss_weight * corners_loss * corner_loss_weight,
     }
-    return losses['total_loss']
+    return losses['total_loss'] ,losses

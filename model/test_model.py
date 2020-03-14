@@ -10,10 +10,8 @@ from train.train_util import  get_batch
 import numpy as np
 from model_util import NUM_HEADING_BIN, NUM_SIZE_CLUSTER, NUM_OBJECT_POINT
 from model_util import g_type_mean_size,g_mean_size_arr
-from model.frustum_pointnets_v1  import FPointNet
 from   model.model_util import get_loss
-from torch.autograd import Variable
-
+import torch.nn.functional as F
 
 
 def convert_to_one_hot(num_class,non_one_hot,*,dim):
@@ -44,9 +42,10 @@ class TestingUtil(object):
         self.negative_high = 0.3
         self.positive_low = 0.7
         self.positive_high = 1.0
-        self.shift = 0.001           #回归偏置
-        self.class_low = 0.1       #分类偏置  0.1 / 0.9
-        self.class_high =0.9
+        self.shift = 0.3           #回归偏置
+        self.class_low = 0       #分类偏置  0.1 / 0.9
+        self.class_high =1
+
     def get_batch_data(self,batch_size,batch_index = 0 ,shuffled =False,*, add_noise=False , datyType ="np",device ='cpu'):
         '''
         @ author chonepieceyb 从数据集中获取 数据
@@ -192,8 +191,7 @@ class TestingUtil(object):
             end_points["heading_scores"] = vfun(heading_scores_one_hot)
             heading_residuals = np.tile(np.expand_dims(batch_hres, axis=1), (1, NUM_HEADING_BIN))  # (B,NC)
             heading_residuals = (heading_residuals + (angle_per_class / 2) * (
-                self.shift)) % (
-                                        angle_per_class / 2)  # (B,NC)添加高斯噪声,待研究
+                self.shift))  # (B,NC)添加高斯噪声,待研究
             heading_residuals = heading_residuals * heading_scores_one_hot  # (B,NC)   屏蔽掉 不是 1 的 ，因为 在损失函数中 只有正确的项 有贡献
             end_points["heading_residuals"] = heading_residuals
             end_points["heading_residuals_normalized"] = heading_residuals / (np.pi / NUM_HEADING_BIN)
@@ -222,12 +220,18 @@ class TestingUtil(object):
 
 if __name__ == '__main__':
     testing = TestingUtil()
-    data,end_points = testing.get_batch_data(2,0,datyType='torch')
+    data,end_points = testing.get_batch_data(1,0,datyType='torch')
     '''
     mask_label, center_label, \
              heading_class_label, heading_residual_label, \
              size_class_label, size_residual_label
     '''
+    print('############### center_label ####################')
+    print(data['center_label'])
+    print(end_points['center'])
+    print(end_points['stage1_center'])
+    print(end_points['center_boxnet'])
+
     print("############### heading class ###################")
     print(data['heading_class_label'])
     print(end_points['heading_scores'])
@@ -246,7 +250,11 @@ if __name__ == '__main__':
 
     for value in end_points.values():
         print(value.dtype)
-    print(get_loss(data['mask_label'].type(torch.LongTensor),data['center_label'].type(torch.float32),
-                   data['heading_class_label'].type(torch.LongTensor),data['heading_residuals_label'].type(torch.float32),
-                   data['size_class_label'].type(torch.LongTensor)
-                   ,data['size_residuals_label'].type(torch.float32),end_points))
+
+    total,losses = get_loss(data['mask_label'].type(torch.LongTensor), data['center_label'].type(torch.float32),
+             data['heading_class_label'].type(torch.LongTensor), data['heading_residuals_label'].type(torch.float32),
+             data['size_class_label'].type(torch.LongTensor)
+             , data['size_residuals_label'].type(torch.float32), end_points)
+    for key , value in losses.items():
+        print(key, value)
+

@@ -188,7 +188,7 @@ def train_one_epoch(fpointnet,device,optimizer):
         fpointnet.zero_grad()
 
         end_points = fpointnet.forward(pointclouds_pl, one_hot_vec_pl)
-        loss = get_loss(labels_pl, centers_pl,\
+        loss,_ = get_loss(labels_pl, centers_pl,\
                   heading_class_label_pl, heading_residual_label_pl,\
                   size_class_label_pl, size_residual_label_pl, end_points)
         optimizer.zero_grad()
