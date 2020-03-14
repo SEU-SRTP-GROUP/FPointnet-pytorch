@@ -312,9 +312,8 @@ if __name__ =='__main__':
     size_residual_label = torch .rand((batch_size,3))
     corner_loss_weight = 0.5
     box_loss_weight = 0.5
-
+    for value in end_points.values():
+        print(value.dtype)
     total_loss = get_loss(mask_label,center_label,heading_class_label,heading_residual_label,size_class_label,size_residual_label,end_points,corner_loss_weight,box_loss_weight)
-    #print(total_loss)
-    for name , parm in fpointnet.named_parameters():
-        print(name,parm.size())
-    print(fpointnet)
+    print(total_loss)
+

@@ -237,7 +237,6 @@ def get_box3d_corners_helper(centers, headings, sizes):
     s = torch.sin(headings)
     ones = torch.ones([N], dtype=torch.float32).to(device)
     zeros = torch.zeros([N], dtype=torch.float32).to(device)
-
     row1 = torch.stack([c, zeros, s], dim=1).to(device)  # (N,3)
     row2 = torch.stack([zeros, ones, zeros], dim=1).to(device)
     row3 = torch.stack([-s, zeros, c], dim=1).to(device)
