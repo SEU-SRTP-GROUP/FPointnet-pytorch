@@ -4,3 +4,5 @@ log/log_train.txt
 *.pyc
 *.pyc
 *.pyc
+log/log_train.txt
+*.pyc

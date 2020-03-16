@@ -216,6 +216,7 @@ def parse_output_to_tensors(output, end_points):
     g_mean_size_arr_tensor =  torch.tensor(g_mean_size_arr,dtype=torch.float32).permute(1,0).to(device)
     end_points['size_residuals'] = size_residuals_normalized * \
         torch.unsqueeze(g_mean_size_arr_tensor,dim=0)
+    print('size_residuals',  end_points['size_residuals'] )
     return end_points
 
 def get_box3d_corners_helper(centers, headings, sizes):
@@ -274,7 +275,7 @@ def get_box3d_corners(center, heading_residuals, size_residuals):
     centers = center.unsqueeze(1).unsqueeze(1).repeat(1, NUM_HEADING_BIN, NUM_SIZE_CLUSTER, 1)  # (B,NH,NS,3)
 
     N = batch_size * NUM_HEADING_BIN * NUM_SIZE_CLUSTER
-    corners_3d = get_box3d_corners_helper(centers.view(N, 3), headings.view(N),sizese( N, 3))
+    corners_3d = get_box3d_corners_helper(centers.view(N, 3), headings.view(N),sizes.view( N, 3))
     return corners_3d.view(batch_size, NUM_HEADING_BIN, NUM_SIZE_CLUSTER, 8, 3)
 
 

@@ -11,8 +11,9 @@ import numpy as np
 from model_util import NUM_HEADING_BIN, NUM_SIZE_CLUSTER, NUM_OBJECT_POINT
 from model_util import g_type_mean_size,g_mean_size_arr
 from   model.model_util import get_loss
+from train.train import compute_summary
 import torch.nn.functional as F
-
+from model.frustum_pointnets_v1 import FPointNet
 
 def convert_to_one_hot(num_class,non_one_hot,*,dim):
     '''
@@ -42,7 +43,7 @@ class TestingUtil(object):
         self.negative_high = 0.3
         self.positive_low = 0.7
         self.positive_high = 1.0
-        self.shift = 0.3           #回归偏置
+        self.shift = 0.01           #回归偏置
         self.class_low = 0       #分类偏置  0.1 / 0.9
         self.class_high =1
 
@@ -56,6 +57,7 @@ class TestingUtil(object):
         :return: data a dict ,data format is torch style
                 data {
                      batch_data : (B,C,N)
+                     batch_one_hot_vec  : (B,3)
                      mask_label:   (B,N)   dim=1  1： 选中 0:不选中
                      heading_class_label: 分别属于哪一种heading的得分   shape(B,)
                      heading_residuals_normalized_label: 正则化后的heading 残差项 : shape(B,)
@@ -107,6 +109,7 @@ class TestingUtil(object):
                       self.NUM_POINT, self.NUM_CHANNEL)
         batch_data = batch_data.transpose(0,2,1)                               # change data format
         data["batch_data"] = batch_data
+        data["batch_one_hot_vec"] = batch_one_hot_vec
         data["center_label"] = batch_center
         data["mask_label"]  = batch_label
         data["heading_class_label"] = batch_hclass
@@ -220,41 +223,72 @@ class TestingUtil(object):
 
 if __name__ == '__main__':
     testing = TestingUtil()
-    data,end_points = testing.get_batch_data(1,0,datyType='torch')
-    '''
-    mask_label, center_label, \
-             heading_class_label, heading_residual_label, \
-             size_class_label, size_residual_label
-    '''
-    print('############### center_label ####################')
-    print(data['center_label'])
-    print(end_points['center'])
-    print(end_points['stage1_center'])
-    print(end_points['center_boxnet'])
-
-    print("############### heading class ###################")
-    print(data['heading_class_label'])
-    print(end_points['heading_scores'])
-
-    print("############### heading_residuals ###################")
-    print(data['heading_residuals_label'])
-    print(end_points['heading_residuals'])
-
-    print("############### size_class ###################")
-    print(data['size_class_label'])
-    print(end_points['size_scores'])
-
-    print("############### size_residuals ###################")
-    print(data['size_residuals_label'])
-    print(end_points['size_residuals'])
-
-    for value in end_points.values():
-        print(value.dtype)
-
+    batch_size = 2
+    data,end_points = testing.get_batch_data(batch_size,0,datyType='torch')
+    fpointnet = FPointNet()
+    end_points = fpointnet.forward(data["batch_data"].type(torch.float32), data["batch_one_hot_vec"].type(torch.float32))
     total,losses = get_loss(data['mask_label'].type(torch.LongTensor), data['center_label'].type(torch.float32),
              data['heading_class_label'].type(torch.LongTensor), data['heading_residuals_label'].type(torch.float32),
              data['size_class_label'].type(torch.LongTensor)
              , data['size_residuals_label'].type(torch.float32), end_points)
     for key , value in losses.items():
         print(key, value)
-
+    '''
+    mask_label, center_label, \
+             heading_class_label, heading_residual_label, \
+             size_class_label, size_residual_label
+    '''
+    # print('############### center_label ####################')
+    # print(data['center_label'])
+    # print(end_points['center'])
+    # print(end_points['stage1_center'])
+    # print(end_points['center_boxnet'])
+    #
+    # print("############### heading class ###################")
+    # print(data['heading_class_label'])
+    # print(end_points['heading_scores'])
+    #
+    # print("############### heading_residuals ###################")
+    # print(data['heading_residuals_label'])
+    # print(end_points['heading_residuals'])
+    #
+    # print("############### size_class ###################")
+    # print(data['size_class_label'])
+    # print(end_points['size_scores'])
+    #
+    # print("############### size_residuals ###################")
+    # print(data['size_residuals_label'])
+    # print(end_points['size_residuals'])
+    #
+    # for key,value in end_points.items():
+    #     print(key,value.size())
+    #
+    # total,losses = get_loss(data['mask_label'].type(torch.LongTensor), data['center_label'].type(torch.float32),
+    #          data['heading_class_label'].type(torch.LongTensor), data['heading_residuals_label'].type(torch.float32),
+    #          data['size_class_label'].type(torch.LongTensor)
+    #          , data['size_residuals_label'].type(torch.float32), end_points)
+    # for key , value in losses.items():
+    #     print(key, value)
+    # '''
+    # data {
+    #                  batch_data : (B,C,N)
+    #                  mask_label:   (B,N)   dim=1  1： 选中 0:不选中
+    #                  heading_class_label: 分别属于哪一种heading的得分   shape(B,)
+    #                  heading_residuals_normalized_label: 正则化后的heading 残差项 : shape(B,)
+    #                  heading_residuals_label  : 未正则化项  shape(B,)
+    #                  size_class_label      :  分别属于哪一种物体的大小（car...） 的得分    shape(B,)
+    #                  size_residuals_normalized_label ： 正则化后的box size 残差项         shape(B,3)
+    #                  size_residuals_label:     未正则化项                                shape(B,3)
+    #                  center_label            : 全局坐标             （B,3)
+    #             }
+    # '''
+    # iou2ds, iou3ds, _= compute_summary(end_points, data["mask_label"], data["center_label"].numpy(), \
+    #                                            data["heading_class_label"].numpy(), data["heading_residuals_label"].numpy(),
+    #                                            data["size_class_label"].numpy(), data["size_residuals_label"].numpy())
+    # iou3d_correct_cnt = np.sum(iou3ds >= 0.7)
+    # accuracy = iou3d_correct_cnt/batch_size
+    # print("accuracy:",accuracy)
+    # iou2d_average = np.sum(iou2ds)/batch_size
+    # iou3d_average = np.sum(iou3ds)/batch_size
+    # print("iou2d:",iou2d_average)
+    # print("iou3d",iou3d_average)
