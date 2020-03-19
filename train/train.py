@@ -8,7 +8,7 @@ import torch
 
 from torch.autograd import Variable
 import provider
-
+from tensorboardX import SummaryWriter
 
 from frustum_pointnets_v1 import FPointNet
 from train_util import get_batch
@@ -18,6 +18,8 @@ from model_util import init_fpointnet
 BASE_DIR = os.path.dirname(__file__)
 ROOT_DIR = os.path.dirname(BASE_DIR)
 sys.path.append(BASE_DIR)
+
+writer = SummaryWriter('runs/exp')
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--log_dir', default='log', help='Log dir [default: log]')
@@ -36,7 +38,7 @@ parser.add_argument('--train_batch_num', default=None, help='decide how much dat
 FLAGS = parser.parse_args()
 
 #训练参数
-EPOCH_CNT = 0
+EPOCH_CNT = 1
 # batch_size表明这个batch中包含多少个点云数据
 BATCH_SIZE = FLAGS.batch_size
 # num_point表明每个点云中含有多少个点
@@ -116,6 +118,10 @@ def train():
 
     optimizer = torch.optim.Adam(fpointnet.parameters(), lr=BASE_LEARNING_RATE)
 
+    # for name,param in fpointnet.named_parameters():
+    #         print(name + ':' )
+    #         print(param.requires_grad)
+
     for epoch in range(MAX_EPOCH):
         print('epoch: %d' % epoch)
         train_one_epoch(fpointnet, device, optimizer)
@@ -185,10 +191,8 @@ def train_one_epoch(fpointnet,device,optimizer):
 
         fpointnet.train()
 
-        fpointnet.zero_grad()
-
         end_points = fpointnet.forward(pointclouds_pl, one_hot_vec_pl)
-        loss,_ = get_loss(labels_pl, centers_pl,\
+        loss, losses = get_loss(labels_pl, centers_pl,\
                   heading_class_label_pl, heading_residual_label_pl,\
                   size_class_label_pl, size_residual_label_pl, end_points)
         optimizer.zero_grad()
@@ -207,6 +211,19 @@ def train_one_epoch(fpointnet,device,optimizer):
         iou2ds_sum += np.sum(iou2ds)
         iou3ds_sum += np.sum(iou3ds)
         iou3d_correct_cnt += np.sum(iou3ds>=0.7)
+
+        iou2d_t = np.sum(iou2ds)/float(BATCH_SIZE)
+        iou3d_t = np.sum(iou3ds)/float(BATCH_SIZE)
+        writer.add_scalar('iou2ds', iou2d_t, global_step=EPOCH_CNT*batch_idx)
+        writer.add_scalar('iou3ds', iou3d_t, global_step=EPOCH_CNT*batch_idx)
+        for key,value in losses.items():
+            writer.add_scalar(key, losses[key].cpu().data.numpy(), global_step=EPOCH_CNT*batch_idx)
+        # writer.add_scalar('total_loss', loss, global_step=EPOCH_CNT*batch_idx)
+        for param_group in optimizer.param_groups:
+            learning_rate = param_group['lr']
+        writer.add_scalar('learning_rate', learning_rate, global_step=EPOCH_CNT*batch_idx)
+        writer.add_scalar('segmentation accuracy', accuracy, global_step=EPOCH_CNT*batch_idx)
+
         if (batch_idx+1)%10 == 0:
                 log_string(' -- %03d / %03d --' % (batch_idx+1, num_batches))
                 log_string('mean loss: %f' % (loss_sum / 10))

@@ -1,13 +1,7 @@
-要修改的：
-models/frusutm_pointnets_v1.py
-models/model_util.py
-models/tf_util.py
-train/train.py
-train/test.py
+﻿python train/train.py --num_point 1024 --max_epoch 201 --batch_size 32 --decay_step 800000 --decay_rate 0.5
 
-models/pointnet_util.py里有import tf但是没翻到import这个类的地方 暂时可以不动应该
+tensorboard --logdir runs
 
-修改起来应该是，把某一个部分比如rpn这一块整个放到一个py里，一个类里写好各个层以及每一次的训练操作放到forward之类
 ####################################################
 fpointnet 代码分析
 1 kitti文件夹下的 都是涉及到视锥提取的数据预处理的代码。 不用改
@@ -47,4 +41,8 @@ fpointnet 代码分析
                 parm: (参数 如果输入输出是 tensor 可以注明 tensor的shape
                 return返回值
                 '''
-     3 第一次一起写代码，可能需要适应一段时间，包括如何沟通api等等 先试看看吧。
+     3 改进思路：
+	loss优化 将label的负项也考虑入内
+	调整网络结构顺序
+	g_type_mean_size
+	srcnn的rpn接上，需要改数据预处理，产生一个类别的预测代替one_hot
