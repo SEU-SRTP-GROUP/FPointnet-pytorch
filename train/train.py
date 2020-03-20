@@ -125,7 +125,7 @@ def train():
     for epoch in range(MAX_EPOCH):
         print('epoch: %d' % epoch)
         train_one_epoch(fpointnet, device, optimizer)
-        # eval_one_epoch(fpointnet, device)
+        eval_one_epoch(fpointnet, device)
         # save the model every 10 epoch
         if (epoch+1)%10 == 0:
             path = os.path.join(MODEL_BASE_DIR,'fpointnet_'+str(datetime.now())+'_epoch'+str(epoch)+'.pth')
@@ -239,7 +239,7 @@ def train_one_epoch(fpointnet,device,optimizer):
                 iou2ds_sum = 0
                 iou3ds_sum = 0
                 iou3d_correct_cnt = 0
-    EPOCH_CNT += 1
+    # EPOCH_CNT += 1
 
 def eval_one_epoch(fpointnet,device):
     '''
@@ -289,7 +289,7 @@ def eval_one_epoch(fpointnet,device):
         # eval
         with torch.no_grad():
             end_points = fpointnet.forward(batch_data_gpu,batch_one_hot_vec_gpu)
-            loss  = get_loss(batch_label_gpu,batch_center_gpu,batch_hclass_gpu,batch_hres_gpu,batch_sclass_gpu,batch_sres_gpu,end_points)
+            loss, losses = get_loss(batch_label_gpu,batch_center_gpu,batch_hclass_gpu,batch_hres_gpu,batch_sclass_gpu,batch_sres_gpu,end_points)
         #get data   and transform dataformat from torch style to tensorflow style
         loss_val = loss.cpu().data.numpy()
         logits_val = end_points['mask_logits'].data.cpu().numpy()

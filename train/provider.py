@@ -195,7 +195,7 @@ class FrustumDataset(object):
             heading_angle = self.heading_list[index]
 
         # Size
-        print(type(self))
+        # print(type(self))
         size_class, size_residual = size2class(list(self.size_list)[index],
             list(self.type_list)[index])
 
@@ -317,6 +317,7 @@ def compute_box3d_iou(center_pred,
     '''
     # change the dataformat from torch style to tensorflow styleim
     size_residuals = size_residuals.transpose(0,2,1)
+    # size_residuals = size_residuals.permute(0,2,1)
     batch_size = heading_logits.shape[0]
     heading_class = np.argmax(heading_logits, 1) # B
     heading_residual = np.array([heading_residuals[i,heading_class[i]] \
@@ -339,7 +340,9 @@ def compute_box3d_iou(center_pred,
         corners_3d_label = get_3d_box(box_size_label,
             heading_angle_label, center_label[i])
 
-        iou_3d, iou_2d = box3d_iou(corners_3d, corners_3d_label) 
+        iou_3d, iou_2d = box3d_iou(corners_3d, corners_3d_label)
+        # print(iou_3d)
+        # print(iou_2d)
         iou3d_list.append(iou_3d)
         iou2d_list.append(iou_2d)
     return np.array(iou2d_list, dtype=np.float32), \
