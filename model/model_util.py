@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import os
 import sys
 import torch
+import re
 from collections import OrderedDict
 
 NUM_HEADING_BIN = 12
@@ -87,18 +88,39 @@ def full_connected_block(name,in_features,out_features ,use_bn=True ,*, linear_p
         layers[activation_fn.__class__.__name__ + "_" + name] = activation_fn
     return nn.Sequential(layers)
 
-def init_fpointnet(net,use_xavier =True):
+def init_fpointnet(net,use_xavier =True,*, const_value = None):
     '''
     初始化 net的权重的函数 ,
     @author: chonepieceyb
     :param net:         要初始化的网络
     :param use_xavier:  使用 xavier_uniform 初始化方式。 如果为ture 就采用pytorch 默认的初始化方式（应该是 uniform?)
     '''
-
-    if use_xavier:
+    if const_value:
         for m in net.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.constant_(m.weight,const_value)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):  # bn层 两个参数 初始化为 1 和 0
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm1d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):  # 初始化全连接层
+                nn.init.constant_(m.weight,const_value)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+        return
+    print("使用 x初始化")
+    if use_xavier:
+        for name,m in net.named_modules():
+            if re.match("relu",name):
+                gain = torch.nn.init.calculate_gain("relu")
+            else:
+                gain = torch.nn.init.calculate_gain("linear")   # linear 和 conv2d 的 gain是一样的
             if isinstance(m,nn.Conv2d):                   # 初始化 2D 卷积层
-                nn.init.xavier_uniform_(m.weight)
+                nn.init.xavier_uniform_(m.weight,gain)
                 if m.bias is not None:
                     nn.init.constant_(m.bias,0)
             elif isinstance(m,nn.BatchNorm2d):              # bn层 两个参数 初始化为 1 和 0
@@ -108,7 +130,7 @@ def init_fpointnet(net,use_xavier =True):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
             elif isinstance(m,nn.Linear):                 #初始化全连接层
-                nn.init.xavier_uniform_(m.weight)
+                nn.init.xavier_uniform_(m.weight,gain)
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
 
@@ -167,9 +189,9 @@ def point_cloud_masking(point_cloud, logits, end_points, xyz_only=True):
 
     batch_size = point_cloud.size()[0]
     num_point = point_cloud.size()[2]
-    mask = torch.index_select(logits, dim=1, index=torch.tensor([0]).to(device)).le(
-        torch.index_select(logits, dim=1, index=torch.tensor([1]).to(device)))  # dim=1 index=0 和 index =1做比较 得到mask  B,1,N
+    mask = torch.index_select(logits, dim=1, index=torch.tensor([0]).to(device))< torch.index_select(logits, dim=1, index=torch.tensor([1]).to(device))  # dim=1 index=0 和 index =1做比较 得到mask  B,1,N
     mask = mask.float()  # 转化为 float 方便计算 , (B,1,N)
+
     point_cloud_xyz = torch.index_select(point_cloud, dim=1,
                                          index=torch.tensor([0, 1, 2]).to(device))  # 只选择 通道的 xyz , shape [B,3,N]
     mask_xyz_mean = torch.mean(
@@ -286,7 +308,6 @@ def huber_loss(error, delta=1.0):  # (B,), ()
     losses = 0.5 * quadratic ** 2 + delta * linear
     return torch.mean(losses)
 
-
 def get_loss(mask_label, center_label, \
              heading_class_label, heading_residual_label, \
              size_class_label, size_residual_label, \
@@ -312,15 +333,15 @@ def get_loss(mask_label, center_label, \
     mask_loss =  F.cross_entropy(end_points['mask_logits'],mask_label,reduction='mean')
     # 计算一个 batch 的 mean_loss,  softmax + cross_entry_loss
     # Center regression losses
-    center_loss = huber_loss(center_label - end_points['center'], delta=2.0)
-    stage1_center_loss = F.smooth_l1_loss(end_points['stage1_center'],center_label,reduction='mean')
+    center_loss = huber_loss(torch.norm(center_label - end_points['center'],dim=1), delta=2.0)
+    stage1_center_loss = huber_loss(torch.norm(end_points['stage1_center']-center_label,dim=1),delta=1.0)
     # Heading loss
     heading_class_loss = F.cross_entropy(end_points['heading_scores'], heading_class_label,reduction='mean')
     hcls_onehot = torch.eye(NUM_HEADING_BIN)[heading_class_label.long()].to(device)
     heading_residual_normalized_label = heading_residual_label / (np.pi / NUM_HEADING_BIN)
     temp1 = hcls_onehot.float()
     temp = torch.sum(end_points['heading_residuals_normalized']*temp1, dim=1).float()
-    heading_residual_normalized_loss = F.smooth_l1_loss(temp,heading_residual_normalized_label, reduction='mean')
+    heading_residual_normalized_loss =huber_loss(torch.norm(temp-heading_residual_normalized_label,dim=-1),delta=1.0)
     # Size loss
     size_class_loss = F.cross_entropy(end_points['size_scores'],size_class_label,reduction='mean')
     scls_onehot = torch.eye(NUM_SIZE_CLUSTER)[size_class_label.long()].to(device)
@@ -332,7 +353,7 @@ def get_loss(mask_label, center_label, \
     mean_size_arr_expand =  mean_size_arr_expand.permute(0,2,1)                                      # change shape to 1*3*NUN_SIZE_CLUSTER
     mean_size_label = torch.sum(scls_onehot_tiled * mean_size_arr_expand, dim=2).to(device)  # Bx3
     size_residual_label_normalized = size_residual_label / mean_size_label
-    size_residual_normalized_loss = F.smooth_l1_loss(predicted_size_residual_normalized,size_residual_label_normalized,reduction='mean')
+    size_residual_normalized_loss = huber_loss(torch.norm(predicted_size_residual_normalized-size_residual_label_normalized,dim=1),delta = 1.0)
 
     # Corner loss
     # We select the predicted corners corresponding to the
@@ -352,8 +373,8 @@ def get_loss(mask_label, center_label, \
     size_label = torch.sum(scls_onehot.float().unsqueeze(-1).float() * size_label, dim=1)  # (B,3)
     corners_3d_gt = get_box3d_corners_helper(center_label, heading_label, size_label)  # (B,8,3)
     corners_3d_gt_flip = get_box3d_corners_helper(center_label, heading_label + np.pi, size_label)  # (B,8,3)
-    corners_loss_gt = F.smooth_l1_loss(corners_3d_pred,corners_3d_gt,reduction='mean')
-    corners_loss_gt_flip = F.smooth_l1_loss(corners_3d_pred, corners_3d_gt_flip, reduction='mean')
+    corners_loss_gt = huber_loss(torch.norm(corners_3d_pred-corners_3d_gt,dim=2),delta=1.0)
+    corners_loss_gt_flip = huber_loss(torch.norm(corners_3d_pred-corners_3d_gt_flip,dim=2), delta =1.0)
     corners_loss = torch.min(corners_loss_gt,corners_loss_gt_flip)
     # Weighted sum of all losses
     total_loss = mask_loss + box_loss_weight * (center_loss +heading_class_loss + size_class_loss +heading_residual_normalized_loss * 20 +size_residual_normalized_loss * 20 + stage1_center_loss + corner_loss_weight * corners_loss)
@@ -361,12 +382,12 @@ def get_loss(mask_label, center_label, \
     losses = {
         'total_loss': total_loss,
         'mask_loss': mask_loss,
-        'mask_loss': box_loss_weight * center_loss,
-        'heading_class_loss': box_loss_weight * heading_class_loss,
-        'size_class_loss': box_loss_weight * size_class_loss,
-        'heading_residual_normalized_loss': box_loss_weight * heading_residual_normalized_loss * 20,
-        'size_residual_normalized_loss': box_loss_weight * size_residual_normalized_loss * 20,
-        'stage1_center_loss': box_loss_weight * size_residual_normalized_loss * 20,
-        'corners_loss': box_loss_weight * corners_loss * corner_loss_weight,
+        'mask_loss':  center_loss,
+        'heading_class_loss': heading_class_loss,
+        'size_class_loss':  size_class_loss,
+        'heading_residual_normalized_loss':  heading_residual_normalized_loss ,
+        'size_residual_normalized_loss': size_residual_normalized_loss,
+        'stage1_center_loss':  size_residual_normalized_loss,
+        'corners_loss': corners_loss ,
     }
     return losses['total_loss'] ,losses
