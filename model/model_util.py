@@ -341,7 +341,7 @@ def get_loss(mask_label, center_label, \
     heading_residual_normalized_label = heading_residual_label / (np.pi / NUM_HEADING_BIN)
     temp1 = hcls_onehot.float()
     temp = torch.sum(end_points['heading_residuals_normalized']*temp1, dim=1).float()
-    heading_residual_normalized_loss =huber_loss(temp-heading_residual_normalized_label,dim=-1,delta=1.0)
+    heading_residual_normalized_loss =huber_loss(temp-heading_residual_normalized_label,delta=1.0)
     # Size loss
     size_class_loss = F.cross_entropy(end_points['size_scores'],size_class_label,reduction='mean')
     scls_onehot = torch.eye(NUM_SIZE_CLUSTER)[size_class_label.long()].to(device)
