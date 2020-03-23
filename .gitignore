@@ -6,3 +6,4 @@ log/log_train.txt
 *.pyc
 log/log_train.txt
 *.pyc
+*.MSI
