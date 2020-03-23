@@ -169,7 +169,7 @@ def gather_object_pc(point_cloud,mask,npoints=512):
             print(choice_index)
             '''
             indices[b] =  pos_indices [choice_index]
-            object_pc[b] = torch.index_select(point_cloud[b],dim=1, index=indices[b].type(torch.LongTensor).to(device))
+        object_pc[b] = torch.index_select(point_cloud[b],dim=1, index=indices[b].type(torch.LongTensor).to(device))
     return object_pc, indices
 
 
@@ -373,9 +373,9 @@ def get_loss(mask_label, center_label, \
     size_label = torch.sum(scls_onehot.float().unsqueeze(-1).float() * size_label, dim=1)  # (B,3)
     corners_3d_gt = get_box3d_corners_helper(center_label, heading_label, size_label)  # (B,8,3)
     corners_3d_gt_flip = get_box3d_corners_helper(center_label, heading_label + np.pi, size_label)  # (B,8,3)
-    corners_loss_gt = huber_loss(torch.norm(corners_3d_pred-corners_3d_gt,dim=2),delta=1.0)
-    corners_loss_gt_flip = huber_loss(torch.norm(corners_3d_pred-corners_3d_gt_flip,dim=2), delta =1.0)
-    corners_loss = torch.min(corners_loss_gt,corners_loss_gt_flip)
+    corner_dist_gt = torch.norm(corners_3d_pred-corners_3d_gt,dim=2)
+    corner_dist_gt_flip = torch.norm(corners_3d_pred-corners_3d_gt_flip,dim=2)
+    corners_loss = huber_loss(torch.min(corner_dist_gt,corner_dist_gt_flip),delta=1.0)
     # Weighted sum of all losses
     total_loss = mask_loss + box_loss_weight * (center_loss +heading_class_loss + size_class_loss +heading_residual_normalized_loss * 20 +size_residual_normalized_loss * 20 + stage1_center_loss + corner_loss_weight * corners_loss)
 

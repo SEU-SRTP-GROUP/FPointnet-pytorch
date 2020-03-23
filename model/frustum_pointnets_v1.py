@@ -25,7 +25,7 @@ class Config(object):
         self.OBJECT_INPUT_CHANNEL =3      # center regress 模块的输出通道数  3 = xyz_only
         self.IS_TRAINING = True           # 是否训练 bn 层 在eval的时候应该为 false
         self.USE_BN = True
-        self.BN_DECAY = 0.99              # bn 层 的 momentum 参数
+        self.BN_DECAY = 0.5            # bn 层 的 momentum 参数
 
 class FPointNet(nn.Module):
     def __init__(self,config=Config()):
@@ -170,9 +170,7 @@ class FPointNet(nn.Module):
             end_points: dict
         '''
         num_point = point_cloud.size()[2]
-
         net = torch.unsqueeze(point_cloud, 3)
-
         net = self.get_instance_seg_1(net)
         net = self.get_instance_seg_2(net)
         point_feat = self.get_instance_seg_3(net)
@@ -180,14 +178,10 @@ class FPointNet(nn.Module):
         net = self.get_instance_seg_5(net)
         # global_feat = self.get_instance_seg_pool_1(net)
         global_feat = F.max_pool2d(net,(num_point,1))
-
         # 把通道数拼起来 pytorch中为第二个
-        global_feat = torch.cat([global_feat, torch.unsqueeze(torch.unsqueeze(one_hot_vec, 2), 3)], 1)
-
+        global_feat = torch.cat([global_feat, torch.unsqueeze(torch.unsqueeze(one_hot_vec, 2), 3)], dim=1)
         global_feat_expand = global_feat.repeat( 1, 1, num_point, 1)
-
         concat_feat = torch.cat([point_feat, global_feat_expand],1)
-
         net = self.get_instance_seg_6(concat_feat)
         net = self.get_instance_seg_7(net)
         net = self.get_instance_seg_8(net)

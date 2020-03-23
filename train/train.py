@@ -23,7 +23,7 @@ writer = SummaryWriter('runs/exp')
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--log_dir', default='log', help='Log dir [default: log]')
-parser.add_argument('--num_point', type=int, default=2048, help='Point Number [default: 2048]')
+parser.add_argument('--num_point', type=int, default=1024, help='Point Number [default: 2048]')
 parser.add_argument('--max_epoch', type=int, default=201, help='Epoch to run [default: 201]')
 parser.add_argument('--batch_size', type=int, default=32, help='Batch Size during training [default: 32]')
 parser.add_argument('--learning_rate', type=float, default=0.001, help='Initial learning rate [default: 0.001]')
