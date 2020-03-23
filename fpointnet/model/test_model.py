@@ -227,14 +227,14 @@ if __name__ == '__main__':
     batch_size =5
     data,simulate_end_points = testing.get_batch_data(batch_size,2,datyType='torch')
     fpointnet = FPointNet()
-    #     init_fpointnet(fpointnet)
-    #     # for name,parm in fpointnet.named_parameters():
-    #     #     print('\nname',name)
-    #     #     print("tensor",parm.size(),parm.type())
-    #     #     print(parm)
-    #     #     print("\n")
-    #     # end_points = fpointnet.forward(data["batch_data"].type(torch.float32), data["batch_one_hot_vec"].type(torch.float32))
-    #     # for key,value in end_points.items():
+    init_fpointnet(fpointnet)
+    # for name,parm in fpointnet.named_parameters():
+    #     print('\nname',name)
+    #     print("tensor",parm.size(),parm.type())
+    #     print(parm)
+    #     print("\n")
+    # end_points = fpointnet.forward(data["batch_data"].type(torch.float32), data["batch_one_hot_vec"].type(torch.float32))
+    # for key,value in end_points.items():
     #     print(key,value,"\n")
     end_points  = fpointnet.forward(data["batch_data"].type(torch.float32), data["batch_one_hot_vec"].type(torch.float32))
     total,losses = get_loss(data['mask_label'].type(torch.LongTensor), data['center_label'].type(torch.float32),
