@@ -10,6 +10,7 @@ from train.train_util import  get_batch
 import numpy as np
 from model_util import NUM_HEADING_BIN, NUM_SIZE_CLUSTER, NUM_OBJECT_POINT
 from model_util import g_type_mean_size,g_mean_size_arr
+from model.model_util import init_fpointnet
 from   model.model_util import get_loss
 from train.train import compute_summary
 import torch.nn.functional as F
@@ -33,9 +34,9 @@ def convert_to_one_hot(num_class,non_one_hot,*,dim):
 
 class TestingUtil(object):
     def __init__(self):
-        self.NUM_POINT = 2048
+        self.NUM_POINT = 1024
         self.DATASET =  provider.FrustumDataset(npoints=self.NUM_POINT, split='train',
-        rotate_to_center=True, random_flip=True, random_shift=True, one_hot=True)
+        rotate_to_center=True, random_flip=False, random_shift=False, one_hot=True)
         self.NUM_CHANNEL = 4         #加上雷达强度
         self.normal_mean = 0         #正态分布的均值
         self.normal_var =1           #正态分布的方差
@@ -223,21 +224,46 @@ class TestingUtil(object):
 
 if __name__ == '__main__':
     testing = TestingUtil()
-    batch_size = 2
-    data,end_points = testing.get_batch_data(batch_size,0,datyType='torch')
+    batch_size =5
+    data,simulate_end_points = testing.get_batch_data(batch_size,2,datyType='torch')
     fpointnet = FPointNet()
-    end_points = fpointnet.forward(data["batch_data"].type(torch.float32), data["batch_one_hot_vec"].type(torch.float32))
+    init_fpointnet(fpointnet)
+    # for name,parm in fpointnet.named_parameters():
+    #     print('\nname',name)
+    #     print("tensor",parm.size(),parm.type())
+    #     print(parm)
+    #     print("\n")
+    # end_points = fpointnet.forward(data["batch_data"].type(torch.float32), data["batch_one_hot_vec"].type(torch.float32))
+    # for key,value in end_points.items():
+    #     print(key,value,"\n")
+    end_points  = fpointnet.forward(data["batch_data"].type(torch.float32), data["batch_one_hot_vec"].type(torch.float32))
     total,losses = get_loss(data['mask_label'].type(torch.LongTensor), data['center_label'].type(torch.float32),
              data['heading_class_label'].type(torch.LongTensor), data['heading_residuals_label'].type(torch.float32),
              data['size_class_label'].type(torch.LongTensor)
              , data['size_residuals_label'].type(torch.float32), end_points)
+    iou2ds, iou3ds, accuracy= compute_summary(end_points, data["mask_label"], data["center_label"].numpy(), \
+                                               data["heading_class_label"].numpy(), data["heading_residuals_label"].numpy(),
+                                               data["size_class_label"].numpy(), data["size_residuals_label"].numpy())
+    iou3d_correct_cnt = np.sum(iou3ds >= 0.7)
+    iou2d_average = np.sum(iou2ds)/batch_size
+    iou3d_average = np.sum(iou3ds)/batch_size
+    iou3d_correct_cnt = np.sum(iou3ds >= 0.7)
+
+    for key ,value in end_points.items():
+        print(key,value)
     for key , value in losses.items():
         print(key, value)
+    print('mean loss: %f' % (total))
+    print("'segmentation accuracy:", accuracy)
+    print("iou2d:", iou2d_average)
+    print("iou3d", iou3d_average)
+    print('box estimation accuracy (IoU=0.7): %f' % \
+          (float(iou3d_correct_cnt) / float(batch_size)))
     '''
-    mask_label, center_label, \
-             heading_class_label, heading_residual_label, \
-             size_class_label, size_residual_label
-    '''
+    # # mask_label, center_label, \
+    # #          heading_class_label, heading_residual_label, \
+    # #          size_class_label, size_residual_label
+    # # '''
     # print('############### center_label ####################')
     # print(data['center_label'])
     # print(end_points['center'])
@@ -282,7 +308,7 @@ if __name__ == '__main__':
     #                  center_label            : 全局坐标             （B,3)
     #             }
     # '''
-    # iou2ds, iou3ds, _= compute_summary(end_points, data["mask_label"], data["center_label"].numpy(), \
+    # iou2ds, iou3ds, _= compute_summary(simulate_end_points , data["mask_label"], data["center_label"].numpy(), \
     #                                            data["heading_class_label"].numpy(), data["heading_residuals_label"].numpy(),
     #                                            data["size_class_label"].numpy(), data["size_residuals_label"].numpy())
     # iou3d_correct_cnt = np.sum(iou3ds >= 0.7)

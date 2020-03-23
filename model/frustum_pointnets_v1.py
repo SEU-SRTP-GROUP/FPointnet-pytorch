@@ -25,7 +25,7 @@ class Config(object):
         self.OBJECT_INPUT_CHANNEL =3      # center regress 模块的输出通道数  3 = xyz_only
         self.IS_TRAINING = True           # 是否训练 bn 层 在eval的时候应该为 false
         self.USE_BN = True
-        self.BN_DECAY = 0.99               # bn 层 的 momentum 参数
+        self.BN_DECAY = 0.99            # bn 层 的 momentum 参数
 
 class FPointNet(nn.Module):
     def __init__(self,config=Config()):
@@ -53,44 +53,45 @@ class FPointNet(nn.Module):
         #author: Qiao
         实例分割模块用到的层
         '''
-        conv_parm_dict={"stride":1,"padding":0}
+        conv_parm_dict={"stride":1,"padding":0,"bias":False}
+        linear_parm_dict={"bias":False}
         bn_parm_dict = {"momentum": self.config.BN_DECAY, "affine": self.config.IS_TRAINING}
 
-        self.get_instance_seg_1 = conv2d_block("seg1",self.config.INPUT_CHANNEL,64,1, self.config.USE_BN ,
+        self.get_instance_seg_1 = conv2d_block("seg1_relu",self.config.INPUT_CHANNEL,64,1, self.config.USE_BN ,
                                                     conv_parm_dict=conv_parm_dict,
                                                     bn_parm_dict=bn_parm_dict)
 
-        self.get_instance_seg_2 = conv2d_block("seg2",64,64,1, self.config.USE_BN  ,
+        self.get_instance_seg_2 = conv2d_block("seg2_relu",64,64,1, self.config.USE_BN  ,
                                                     conv_parm_dict=conv_parm_dict,
                                                     bn_parm_dict=bn_parm_dict)
 
         # 这一层就结束得到64维局部特征point_feature
-        self.get_instance_seg_3 = conv2d_block("seg3",64,64,1, self.config.USE_BN  ,
+        self.get_instance_seg_3 = conv2d_block("seg3_relu",64,64,1, self.config.USE_BN  ,
                                                     conv_parm_dict=conv_parm_dict,
                                                     bn_parm_dict=bn_parm_dict)
 
-        self.get_instance_seg_4 = conv2d_block("seg4",64,128,1, self.config.USE_BN  ,
+        self.get_instance_seg_4 = conv2d_block("seg4_relu",64,128,1, self.config.USE_BN  ,
                                                     conv_parm_dict=conv_parm_dict,
                                                     bn_parm_dict=bn_parm_dict)
         # 这一层就结束得到1024维全局特征global_feature
-        self.get_instance_seg_5 = conv2d_block("seg5",128,1024,1, self.config.USE_BN  ,
+        self.get_instance_seg_5 = conv2d_block("seg5_relu",128,1024,1, self.config.USE_BN  ,
                                                     conv_parm_dict=conv_parm_dict,
                                                     bn_parm_dict=bn_parm_dict)
 
         # 然后需要拼接两个特征变成一个1088维的
-        self.get_instance_seg_6 =  conv2d_block("seg6",1088+3,512,1, self.config.USE_BN  ,
+        self.get_instance_seg_6 =  conv2d_block("seg6_relu",1088+3,512,1, self.config.USE_BN  ,
                                                     conv_parm_dict=conv_parm_dict,
                                                     bn_parm_dict=bn_parm_dict)
 
-        self.get_instance_seg_7 = conv2d_block("seg7",512,256,1, self.config.USE_BN  ,
+        self.get_instance_seg_7 = conv2d_block("seg7_relu",512,256,1, self.config.USE_BN  ,
                                                     conv_parm_dict=conv_parm_dict,
                                                     bn_parm_dict=bn_parm_dict)
 
-        self.get_instance_seg_8 =  conv2d_block("seg8",256,128,1, self.config.USE_BN  ,
+        self.get_instance_seg_8 =  conv2d_block("seg8_relu",256,128,1, self.config.USE_BN  ,
                                                     conv_parm_dict=conv_parm_dict,
                                                     bn_parm_dict=bn_parm_dict)
 
-        self.get_instance_seg_9 = conv2d_block("seg9",128,128,1, self.config.USE_BN  ,
+        self.get_instance_seg_9 = conv2d_block("seg9_relu",128,128,1, self.config.USE_BN  ,
                                                     conv_parm_dict=conv_parm_dict,
                                                     bn_parm_dict=bn_parm_dict)
 
@@ -111,43 +112,44 @@ class FPointNet(nn.Module):
 
         ##############   T-Net 参数模块  ######################
 
-        self.conv_Tnet_1 = conv2d_block("Tnet1",self.config.OBJECT_INPUT_CHANNEL,128,[1,1], self.config.USE_BN  ,
+        self.conv_Tnet_1 = conv2d_block("Tnet1_relu",self.config.OBJECT_INPUT_CHANNEL,128,[1,1], self.config.USE_BN  ,
                                                     conv_parm_dict=conv_parm_dict,
                                                     bn_parm_dict=bn_parm_dict)
 
-        self.conv_Tnet_2 = conv2d_block("Tnet2",128,128,[1,1], self.config.USE_BN  ,
+        self.conv_Tnet_2 = conv2d_block("Tnet2_relu",128,128,[1,1], self.config.USE_BN  ,
                                                     conv_parm_dict=conv_parm_dict,
                                                     bn_parm_dict=bn_parm_dict)
 
-        self.conv_Tnet_3 = conv2d_block("Tnet3", 128, 256, [1, 1], self.config.USE_BN,
+        self.conv_Tnet_3 = conv2d_block("Tnet3_relu", 128, 256, [1, 1], self.config.USE_BN,
                                              conv_parm_dict=conv_parm_dict,
                                              bn_parm_dict=bn_parm_dict)
 
-        self.fc_Tnet_1   = full_connected_block("Tnet4",256+3,256,self.config.USE_BN,
+        self.fc_Tnet_1   = full_connected_block("Tnet4_relu",256+3,256,self.config.USE_BN,linear_parm_dict=linear_parm_dict,
                                                      bn_parm_dict=bn_parm_dict)
 
-        self.fc_Tnet_2   = full_connected_block("Tnet5",256,128,self.config.USE_BN)
+        self.fc_Tnet_2   = full_connected_block("Tnet5_relu",256,128,self.config.USE_BN,linear_parm_dict=linear_parm_dict,
+                                                     bn_parm_dict=bn_parm_dict)
 
         self.fc_Tnet_3 = nn.Linear(128,3)
         ##############   3d box 回归参数 ######################
-        self.conv_3dbox_1 = conv2d_block("3dbox1", 3, 128, [1, 1], self.config.USE_BN,
+        self.conv_3dbox_1 = conv2d_block("3dbox1_relu", 3, 128, [1, 1], self.config.USE_BN,
                                              conv_parm_dict=conv_parm_dict,
                                              bn_parm_dict=bn_parm_dict)
 
-        self.conv_3dbox_2 = conv2d_block("3dbox2", 128, 128, [1, 1], self.config.USE_BN,
+        self.conv_3dbox_2 = conv2d_block("3dbox2_relu", 128, 128, [1, 1], self.config.USE_BN,
                                              conv_parm_dict=conv_parm_dict,
                                              bn_parm_dict=bn_parm_dict)
 
-        self.conv_3dbox_3 = conv2d_block("3dbox3", 128,256, [1, 1], self.config.USE_BN,
+        self.conv_3dbox_3 = conv2d_block("3dbox3_relu", 128,256, [1, 1], self.config.USE_BN,
                                              conv_parm_dict=conv_parm_dict,
                                              bn_parm_dict=bn_parm_dict)
-        self.conv_3dbox_4 = conv2d_block("3dbox4", 256,512, [1, 1], self.config.USE_BN,
+        self.conv_3dbox_4 = conv2d_block("3dbox4_relu", 256,512, [1, 1], self.config.USE_BN,
                                              conv_parm_dict=conv_parm_dict,
                                              bn_parm_dict=bn_parm_dict)
 
-        self.fc_3dbox_1  = full_connected_block("3dbox5 ",515,512,self.config.USE_BN,
+        self.fc_3dbox_1  = full_connected_block("3dbox5_relu",515,512,self.config.USE_BN, linear_parm_dict = linear_parm_dict,
                                                      bn_parm_dict=bn_parm_dict)
-        self.fc_3dbox_2  =  full_connected_block("3dbox6 ",512,256,self.config.USE_BN,
+        self.fc_3dbox_2  =  full_connected_block("3dbox6_relu",512,256,self.config.USE_BN,linear_parm_dict = linear_parm_dict,
                                                      bn_parm_dict=bn_parm_dict)
 
         self.fc_3dbox_3 = nn.Linear(256, 3 + NUM_HEADING_BIN * 2 + NUM_SIZE_CLUSTER * 4)
@@ -170,9 +172,7 @@ class FPointNet(nn.Module):
             end_points: dict
         '''
         num_point = point_cloud.size()[2]
-
         net = torch.unsqueeze(point_cloud, 3)
-
         net = self.get_instance_seg_1(net)
         net = self.get_instance_seg_2(net)
         point_feat = self.get_instance_seg_3(net)
@@ -180,19 +180,15 @@ class FPointNet(nn.Module):
         net = self.get_instance_seg_5(net)
         # global_feat = self.get_instance_seg_pool_1(net)
         global_feat = F.max_pool2d(net,(num_point,1))
-
         # 把通道数拼起来 pytorch中为第二个
-        global_feat = torch.cat([global_feat, torch.unsqueeze(torch.unsqueeze(one_hot_vec, 2), 3)], 1)
-
+        global_feat = torch.cat([global_feat, torch.unsqueeze(torch.unsqueeze(one_hot_vec, 2), 3)], dim=1)
         global_feat_expand = global_feat.repeat( 1, 1, num_point, 1)
-
         concat_feat = torch.cat([point_feat, global_feat_expand],1)
-
         net = self.get_instance_seg_6(concat_feat)
         net = self.get_instance_seg_7(net)
         net = self.get_instance_seg_8(net)
         net = self.get_instance_seg_9(net)
-        net = self.get_instance_seg_dp_1(net)
+        #net = self.get_instance_seg_dp_1(net)
         logits = self.get_instance_seg_10(net)
         logits = torch.squeeze(logits, 3) # BxCxN
         return logits
