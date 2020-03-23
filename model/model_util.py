@@ -115,10 +115,11 @@ def init_fpointnet(net,use_xavier =True,*, const_value = None):
     print("使用 x初始化")
     if use_xavier:
         for name,m in net.named_modules():
-            if re.match("relu",name):
-                gain = torch.nn.init.calculate_gain("relu")
-            else:
-                gain = torch.nn.init.calculate_gain("linear")   # linear 和 conv2d 的 gain是一样的
+            # if re.match("relu",name):
+            #     gain = torch.nn.init.calculate_gain("relu")
+            # else:
+            #     gain = torch.nn.init.calculate_gain("linear")   # linear 和 conv2d 的 gain是一样的
+            gain = 1.0
             if isinstance(m,nn.Conv2d):                   # 初始化 2D 卷积层
                 nn.init.xavier_uniform_(m.weight,gain)
                 if m.bias is not None:
@@ -194,9 +195,15 @@ def point_cloud_masking(point_cloud, logits, end_points, xyz_only=True):
 
     point_cloud_xyz = torch.index_select(point_cloud, dim=1,
                                          index=torch.tensor([0, 1, 2]).to(device))  # 只选择 通道的 xyz , shape [B,3,N]
-    mask_xyz_mean = torch.mean(
-        point_cloud_xyz * mask.repeat(1, 3, 1), dim=2, keepdim=True
-    )  # shape (B,3,1)
+
+    # [B,3,N] *  [B,1,N]  =  [B,3,N]
+    # [B,1,N]  [B,1,1] - > [B,3,1]
+    mask_xyz_mean = torch.sum(point_cloud_xyz * mask.repeat(1, 3, 1), dim=2, keepdim=True)
+    mask_count = torch.sum(mask,dim=2,keepdim=True).repeat(1,3,1)  # B*3*1
+    mask_xyz_mean = mask_xyz_mean/torch.clamp(mask_count,min=1)
+    # mask_xyz_mean = torch.mean(
+    #     point_cloud_xyz * mask.repeat(1, 3, 1), dim=2, keepdim=True
+    # )  # shape (B,3,1)
     mask = torch.squeeze(mask, dim=1)  # change shape to (B,N)
     end_points["mask"] = mask         # mask
     point_cloud_xyz_stage1 = point_cloud_xyz - mask_xyz_mean.repeat(1,1,num_point)    # 转换到局部坐标系   (B,3,N)

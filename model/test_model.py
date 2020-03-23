@@ -224,10 +224,10 @@ class TestingUtil(object):
 
 if __name__ == '__main__':
     testing = TestingUtil()
-    batch_size =32
-    data,_ = testing.get_batch_data(batch_size,0,datyType='torch')
+    batch_size =5
+    data,simulate_end_points = testing.get_batch_data(batch_size,2,datyType='torch')
     fpointnet = FPointNet()
-    init_fpointnet(fpointnet,const_value=0.01)
+    init_fpointnet(fpointnet)
     # for name,parm in fpointnet.named_parameters():
     #     print('\nname',name)
     #     print("tensor",parm.size(),parm.type())
@@ -308,7 +308,7 @@ if __name__ == '__main__':
     #                  center_label            : 全局坐标             （B,3)
     #             }
     # '''
-    # iou2ds, iou3ds, _= compute_summary(end_points, data["mask_label"], data["center_label"].numpy(), \
+    # iou2ds, iou3ds, _= compute_summary(simulate_end_points , data["mask_label"], data["center_label"].numpy(), \
     #                                            data["heading_class_label"].numpy(), data["heading_residuals_label"].numpy(),
     #                                            data["size_class_label"].numpy(), data["size_residuals_label"].numpy())
     # iou3d_correct_cnt = np.sum(iou3ds >= 0.7)

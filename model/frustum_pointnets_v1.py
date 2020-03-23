@@ -25,7 +25,7 @@ class Config(object):
         self.OBJECT_INPUT_CHANNEL =3      # center regress 模块的输出通道数  3 = xyz_only
         self.IS_TRAINING = True           # 是否训练 bn 层 在eval的时候应该为 false
         self.USE_BN = True
-        self.BN_DECAY = 0.5            # bn 层 的 momentum 参数
+        self.BN_DECAY = 0.99            # bn 层 的 momentum 参数
 
 class FPointNet(nn.Module):
     def __init__(self,config=Config()):
@@ -53,7 +53,8 @@ class FPointNet(nn.Module):
         #author: Qiao
         实例分割模块用到的层
         '''
-        conv_parm_dict={"stride":1,"padding":0}
+        conv_parm_dict={"stride":1,"padding":0,"bias":False}
+        linear_parm_dict={"bias":False}
         bn_parm_dict = {"momentum": self.config.BN_DECAY, "affine": self.config.IS_TRAINING}
 
         self.get_instance_seg_1 = conv2d_block("seg1_relu",self.config.INPUT_CHANNEL,64,1, self.config.USE_BN ,
@@ -123,10 +124,11 @@ class FPointNet(nn.Module):
                                              conv_parm_dict=conv_parm_dict,
                                              bn_parm_dict=bn_parm_dict)
 
-        self.fc_Tnet_1   = full_connected_block("Tnet4_relu",256+3,256,self.config.USE_BN,
+        self.fc_Tnet_1   = full_connected_block("Tnet4_relu",256+3,256,self.config.USE_BN,linear_parm_dict=linear_parm_dict,
                                                      bn_parm_dict=bn_parm_dict)
 
-        self.fc_Tnet_2   = full_connected_block("Tnet5_relu",256,128,self.config.USE_BN)
+        self.fc_Tnet_2   = full_connected_block("Tnet5_relu",256,128,self.config.USE_BN,linear_parm_dict=linear_parm_dict,
+                                                     bn_parm_dict=bn_parm_dict)
 
         self.fc_Tnet_3 = nn.Linear(128,3)
         ##############   3d box 回归参数 ######################
@@ -145,9 +147,9 @@ class FPointNet(nn.Module):
                                              conv_parm_dict=conv_parm_dict,
                                              bn_parm_dict=bn_parm_dict)
 
-        self.fc_3dbox_1  = full_connected_block("3dbox5_relu",515,512,self.config.USE_BN,
+        self.fc_3dbox_1  = full_connected_block("3dbox5_relu",515,512,self.config.USE_BN, linear_parm_dict = linear_parm_dict,
                                                      bn_parm_dict=bn_parm_dict)
-        self.fc_3dbox_2  =  full_connected_block("3dbox6_relu",512,256,self.config.USE_BN,
+        self.fc_3dbox_2  =  full_connected_block("3dbox6_relu",512,256,self.config.USE_BN,linear_parm_dict = linear_parm_dict,
                                                      bn_parm_dict=bn_parm_dict)
 
         self.fc_3dbox_3 = nn.Linear(256, 3 + NUM_HEADING_BIN * 2 + NUM_SIZE_CLUSTER * 4)
@@ -186,7 +188,7 @@ class FPointNet(nn.Module):
         net = self.get_instance_seg_7(net)
         net = self.get_instance_seg_8(net)
         net = self.get_instance_seg_9(net)
-        net = self.get_instance_seg_dp_1(net)
+        #net = self.get_instance_seg_dp_1(net)
         logits = self.get_instance_seg_10(net)
         logits = torch.squeeze(logits, 3) # BxCxN
         return logits
