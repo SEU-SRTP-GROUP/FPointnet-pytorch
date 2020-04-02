@@ -155,10 +155,10 @@ class _StereoRCNN(nn.Module):
         # feed left image data to base model to obtain base feature map
         # Bottom-up
         c1_left = self.RCNN_layer0(im_left_data) # 64 x 1/4
-        c2_left = self.RCNN_layer1(c1_left)      # 256 x 1/4
-        c3_left = self.RCNN_layer2(c2_left)      # 512 x 1/8
-        c4_left = self.RCNN_layer3(c3_left)      # 1024 x 1/16
-        c5_left = self.RCNN_layer4(c4_left)      # 2048 x 1/32
+        c2_left = self.RCNN_layer1(c1_left)      # 128 x 1/4,原先srcnn是256
+        c3_left = self.RCNN_layer2(c2_left)      # 256 x 1/8,原先srcnn是512
+        c4_left = self.RCNN_layer3(c3_left)      # 512 x 1/16,原先srcnn是1024
+        c5_left = self.RCNN_layer4(c4_left)      # 512 x 1/32,原先srcnn是2048
         # Top-down
         p5_left = self.RCNN_toplayer(c5_left)    # 256 x 1/32
         p4_left = self._upsample_add(p5_left, self.RCNN_latlayer1(c4_left))
