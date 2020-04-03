@@ -10,6 +10,7 @@ ROOT_DIR = os.path.dirname(BASE_DIR)
 sys.path.append(BASE_DIR)
 sys.path.append(os.path.join(ROOT_DIR, 'utils'))
 from model_util import NUM_HEADING_BIN, NUM_SIZE_CLUSTER, NUM_OBJECT_POINT
+from model_util import angle2class
 from model_util import point_cloud_masking
 from model_util import parse_output_to_tensors
 from model_util import init_fpointnet
@@ -131,6 +132,27 @@ class FPointNet(nn.Module):
                                                      bn_parm_dict=bn_parm_dict)
 
         self.fc_Tnet_3 = nn.Linear(128,3)
+        ##############   R-Net 参数模块  ######################
+
+        self.conv_Rnet_1 = conv2d_block("Rnet1_relu",self.config.OBJECT_INPUT_CHANNEL,128,[1,1], self.config.USE_BN  ,
+                                                    conv_parm_dict=conv_parm_dict,
+                                                    bn_parm_dict=bn_parm_dict)
+
+        self.conv_Rnet_2 = conv2d_block("Rnet2_relu",128,128,[1,1], self.config.USE_BN  ,
+                                                    conv_parm_dict=conv_parm_dict,
+                                                    bn_parm_dict=bn_parm_dict)
+
+        self.conv_Rnet_3 = conv2d_block("Rnet3_relu", 128, 256, [1, 1], self.config.USE_BN,
+                                             conv_parm_dict=conv_parm_dict,
+                                             bn_parm_dict=bn_parm_dict)
+
+        self.fc_Rnet_1   = full_connected_block("Rnet4_relu",256+3,256,self.config.USE_BN,linear_parm_dict=linear_parm_dict,
+                                                     bn_parm_dict=bn_parm_dict)
+
+        self.fc_Rnet_2   = full_connected_block("Rnet5_relu",256,128,self.config.USE_BN,linear_parm_dict=linear_parm_dict,
+                                                     bn_parm_dict=bn_parm_dict)
+
+        self.fc_Rnet_3 = nn.Linear(128,1)
         ##############   3d box 回归参数 ######################
         self.conv_3dbox_1 = conv2d_block("3dbox1_relu", 3, 128, [1, 1], self.config.USE_BN,
                                              conv_parm_dict=conv_parm_dict,
@@ -236,6 +258,55 @@ class FPointNet(nn.Module):
         predicted_center = self.fc_Tnet_3(net)            # fc           [B,128]->[B,3]
         return predicted_center
 
+    def get_rotate_regression_net(self,object_point_cloud,one_hot_vec):
+        '''
+        @author chonepieceyb  T-Net 原本放在 model_utils里面，因为里面有参数需要训练 所以放在了类里
+        :param object_point_cloud:  tensor in shape (B,C,num_points) point clouds in 3D mask coordinate
+        :param one_hot_vec:   TF tensor in shape (B,3)  length-3 vectors indicating predicted object type
+        :return:  predicted_center:  tensor in shape (B,3)
+        '''
+        num_point = object_point_cloud.size()[2]
+        net = torch.unsqueeze(object_point_cloud,3)       #change shape to ( B,C,num_points,1)
+        net = self.conv_Rnet_1(net)                        # conv_block conv+bn+relu ,  [B,C,M,1]->[B,128,M,1]
+        net = self.conv_Rnet_2(net)                         # conv_block conv+bn+relu ,  [B,128,M,1]->[B,128,M,1]
+        net = self.conv_Rnet_3(net)                          # conv_block conv+bn+relu ,  [B,128,M,1]->[B,256,M,1]
+        net = F.max_pool2d(net,(num_point,1))              # max_pool layer   [B,256,M,1]->[B,256,1,1]
+        net = net.view(-1,256)                           # (B,256)
+        net = torch.cat((net,one_hot_vec),dim=1)                # (B,259)
+        net = self.fc_Rnet_1(net)                        # fc+bn+relu    [B,259]->[B,256]
+        net = self.fc_Rnet_2(net)                         # fc+bn+relu    [B,256]->[B,128]
+        predicted_angle = self.fc_Rnet_3(net)            # fc           [B,128]->[B,1]
+        return predicted_angle
+
+    #copy from provider.py
+    def rotate_pc_along_y(self,pc,rot_angle):
+        '''
+        Input:s
+            pc: tensor in shape (B,3,N)
+            rot_angle: 
+            batch_size: B
+        Output:
+            pc: updated pc with XYZ rotated
+        '''
+        batch_size = pc.size()[0]
+        for index in range(batch_size):
+            cosval = torch.cos(torch.unsqueeze(rot_angle[index],0))
+            #print(cosval)
+            #print("-------------------------------------------------")
+            sinval = torch.sin(torch.unsqueeze(rot_angle[index],0))
+            rotmat = torch.cat((torch.cat((cosval, sinval),1),torch.cat((-sinval, cosval),1)),0)
+            #print(rotmat)
+            pc2=torch.squeeze(pc[index,[0,2],:])
+            #print(pc.size())
+            #print("-------------pc.size--------------")    
+            pc2=torch.mm(rotmat,pc2)
+            pc3=torch.cat((torch.unsqueeze(pc2[0,:],dim=0),torch.unsqueeze(pc[index,1,:],dim=0),torch.unsqueeze(pc2[1,:],0)),0)
+            if index==0:
+                pc4=torch.unsqueeze(pc3,dim=0)
+            else:
+                pc4=torch.cat((pc4,torch.unsqueeze(pc3,dim=0)),0)
+        return pc4
+
     def forward(self, point_cloud, one_hot_vec):
         '''
         @ author chonepieceyb
@@ -258,14 +329,19 @@ class FPointNet(nn.Module):
         center_delta = self.get_center_regression_net(object_point_cloud_xyz,one_hot_vec)                             # 局部坐标系的回归, center_delta shape (B,3)
         stage1_center = center_delta+ mask_xyz_mean
         self.end_points['stage1_center'] = stage1_center
-        object_point_cloud_xyz_new = object_point_cloud_xyz - torch.unsqueeze(center_delta,dim=2)                    # -(B,3,1)
+        object_point_cloud_xyz_inter = object_point_cloud_xyz - torch.unsqueeze(center_delta,dim=2)                    # -(B,3,1)
 
-        # Amodel Box Estimation PointNet
+        # Get rotate angle
+        frustum_angle=self.get_rotate_regression_net(object_point_cloud_xyz_inter,one_hot_vec)
+        object_point_cloud_xyz_new=self.rotate_pc_along_y(object_point_cloud_xyz_inter,frustum_angle)
+
+        # Amodel Box Estimation PointNets
         output = self.get_3d_box_estimation_v1_net(object_point_cloud_xyz_new,one_hot_vec)
 
         # parse output to 3D box parameters
         self.end_points = parse_output_to_tensors (output,self.end_points)
         self.end_points['center'] =  self.end_points['center_boxnet'] + stage1_center # Bx3
+        self.end_points['rotate_angle']=frustum_angle
         return self.end_points
 
 
@@ -276,6 +352,7 @@ if __name__ =='__main__':
     test_one_hot = torch.rand((batch_size, 3))
     fpointnet = FPointNet()
     init_fpointnet(fpointnet)
+    #加一个参数 batch_size
     end_points = fpointnet.forward(test_input, test_one_hot)
     #查看网络参数
     init_fpointnet(fpointnet)

@@ -217,6 +217,40 @@ def point_cloud_masking(point_cloud, logits, end_points, xyz_only=True):
     object_point_cloud ,_= gather_object_pc(point_cloud_stage1,mask,NUM_OBJECT_POINT)
     return object_point_cloud, torch.squeeze(mask_xyz_mean,dim=2),end_points
 
+def angle2class(angle, num_class):
+    ''' 
+    Copy from provider
+    Convert continuous angle to discrete class and residual.
+
+    Input:
+        angle: rad scalar, from 0-2pi (or -pi~pi), class center at
+            0, 1*(2pi/N), 2*(2pi/N) ...  (N-1)*(2pi/N)
+        num_class: int scalar, number of classes N
+    Output:
+        class_id, int, among 0,1,...,N-1
+        residual_angle: float, a number such that
+            class*(2pi/N) + residual_angle = angle
+    '''
+    angle = angle%(2*np.pi)
+    #assert(angle>=0 and angle<=2*np.pi)
+    angle_per_class = 2*np.pi/float(num_class)
+    shifted_angle = (angle+angle_per_class/2)%(2*np.pi)
+    class_id = (shifted_angle/angle_per_class).int()
+    residual_angle = shifted_angle - ((class_id * angle_per_class).float() + angle_per_class/2)
+    return torch.squeeze(class_id).long(),torch.squeeze(residual_angle) 
+
+def class2angle(pred_cls, residual, num_class, to_label_format=True):
+    ''' Inverse function to angle2class.
+    If to_label_format, adjust angle to the range as in labels.
+    '''
+    angle_per_class = 2*np.pi/float(num_class)
+    angle_center = pred_cls * angle_per_class
+    angle = angle_center.float() +residual
+    for index in range(angle.size()[0]):
+        if to_label_format and angle[index]>np.pi:
+            angle[index] = angle[index] - 2*np.pi
+    return angle
+
 def parse_output_to_tensors(output, end_points):
     '''
     @author: chonepieceyb
@@ -320,7 +354,8 @@ def get_loss(mask_label, center_label, \
              size_class_label, size_residual_label, \
              end_points, \
              corner_loss_weight=10.0, \
-             box_loss_weight=1.0):
+             box_loss_weight=1.0, \
+             random_flip=False):
     ''' Loss functions for 3D object detection.
     Input:
         mask_label:  int32 tensor in shape (B,N)
@@ -343,6 +378,22 @@ def get_loss(mask_label, center_label, \
     center_loss = huber_loss(torch.norm(center_label - end_points['center'],dim=1), delta=2.0)
     stage1_center_loss = huber_loss(torch.norm(end_points['stage1_center']-center_label,dim=1),delta=1.0)
     # Heading loss
+    #print(heading_class_label)
+    #print("----------------------heading_class_label-------------------------")
+    #print(heading_residual_label)
+    #print("----------------------heading_residual_label-------------------------")
+    if random_flip:
+        if np.random.random()>0.5:
+            rotate_angle=class2angle(heading_class_label,heading_residual_label,NUM_HEADING_BIN)+end_points['rotate_angle']
+        else:
+            rotate_angle=class2angle(heading_class_label,heading_residual_label,NUM_HEADING_BIN)-end_points['rotate_angle']
+    heading_class_label,heading_residual_label=angle2class(end_points['rotate_angle'],NUM_HEADING_BIN)
+    #print(heading_class_label)
+    #print("----------------------heading_class_label-------------------------")
+    #print(heading_residual_label)
+    #print("----------------------heading_residual_label-------------------------")
+    end_points['batch_hclass']=heading_class_label
+    end_points['batch_hres']=heading_residual_label
     heading_class_loss = F.cross_entropy(end_points['heading_scores'], heading_class_label,reduction='mean')
     hcls_onehot = torch.eye(NUM_HEADING_BIN)[heading_class_label.long()].to(device)
     heading_residual_normalized_label = heading_residual_label / (np.pi / NUM_HEADING_BIN)

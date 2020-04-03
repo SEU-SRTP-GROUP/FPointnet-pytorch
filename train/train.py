@@ -70,9 +70,9 @@ BN_DECAY_CLIP = 0.99
 
 # Load Frustum Datasets. Use default data paths.
 TRAIN_DATASET = provider.FrustumDataset(npoints=NUM_POINT, split='train',
-    rotate_to_center=True, random_flip=True, random_shift=True, one_hot=True)
+    rotate_to_center=False, random_flip=True, random_shift=True, one_hot=True)
 TEST_DATASET = provider.FrustumDataset(npoints=NUM_POINT, split='val',
-    rotate_to_center=True, one_hot=True)
+    rotate_to_center=False, one_hot=True)
 
 def log_string(out_str):
     LOG_FOUT.write(out_str+'\n')
@@ -194,7 +194,7 @@ def train_one_epoch(fpointnet,device,optimizer):
         end_points = fpointnet.forward(pointclouds_pl, one_hot_vec_pl)
         loss, losses = get_loss(labels_pl, centers_pl,\
                   heading_class_label_pl, heading_residual_label_pl,\
-                  size_class_label_pl, size_residual_label_pl, end_points)
+                  size_class_label_pl, size_residual_label_pl, end_points,random_flip=True)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -202,7 +202,7 @@ def train_one_epoch(fpointnet,device,optimizer):
         loss_val = loss.cpu().detach().numpy()
         logits_val = end_points['mask_logits'].cpu().detach().numpy()
         iou2ds,iou3ds,accuracy = compute_summary(end_points,labels_pl ,batch_center,\
-                                                 batch_hclass,batch_hres,batch_sclass,batch_sres)
+                                                 end_points['batch_hclass'].cpu().data.numpy(),end_points['batch_hres'].cpu().data.numpy(),batch_sclass,batch_sres)
         preds_val = np.argmax(logits_val, 1)
         correct = np.sum(preds_val == batch_label)
         total_correct += correct
@@ -293,7 +293,8 @@ def eval_one_epoch(fpointnet,device):
         #get data   and transform dataformat from torch style to tensorflow style
         loss_val = loss.cpu().data.numpy()
         logits_val = end_points['mask_logits'].data.cpu().numpy()
-        iou2ds,iou3ds,accuracy = compute_summary(end_points,batch_label_gpu,batch_center,batch_hclass,batch_hres,batch_sclass,batch_sres)
+        iou2ds,iou3ds,accuracy = compute_summary(end_points,batch_label_gpu,batch_center,end_points['batch_hclass'].cpu().data.numpy(), \
+            end_points['batch_hres'].cpu().data.numpy(),batch_sclass,batch_sres)
         preds_val = np.argmax(logits_val, 1)
         correct = np.sum(preds_val == batch_label)
         total_correct += correct
