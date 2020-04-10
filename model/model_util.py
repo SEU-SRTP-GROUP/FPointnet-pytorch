@@ -251,6 +251,19 @@ def class2angle(pred_cls, residual, num_class, to_label_format=True):
             angle[index] = angle[index] - 2*np.pi
     return angle
 
+def class2angles(pred_cls, residual, num_class, to_label_format=True):
+    ''' Inverse function to angle2class.
+    If to_label_format, adjust angle to the range as in labels.
+    '''
+    angle_per_class = 2*np.pi/float(num_class)
+    angle_center = pred_cls * angle_per_class
+    angle = angle_center.float() +residual
+    for index in range(angle.size()[0]):
+        for index2 in range(angle.size()[1]):
+            if to_label_format and angle[index][index2]>np.pi:
+                angle[index][index2] = angle[index][index2] - 2*np.pi
+    return angle
+
 def parse_output_to_tensors(output, end_points):
     '''
     @author: chonepieceyb
@@ -266,10 +279,10 @@ def parse_output_to_tensors(output, end_points):
 
     heading_scores = torch.index_select(output,dim=1,index=torch.arange(3,3+NUM_HEADING_BIN).to(device))
     heading_residuals_normalized = torch.index_select(output,dim=1,index=torch.arange(3+NUM_HEADING_BIN, 3+2*NUM_HEADING_BIN).to(device))
-    end_points['heading_scores'] = heading_scores # BxNUM_HEADING_BIN
-    end_points['heading_residuals_normalized'] = \
+    end_points['rotate_heading_scores'] = heading_scores # BxNUM_HEADING_BIN
+    end_points['rotate_heading_residuals_normalized'] = \
         heading_residuals_normalized # BxNUM_HEADING_BIN (-1 to 1)
-    end_points['heading_residuals'] = \
+    end_points['rotate_heading_residuals'] = \
         heading_residuals_normalized * (np.pi / NUM_HEADING_BIN)  # BxNUM_HEADING_BIN
     size_scores = torch.index_select(output,dim=1,index=torch.arange( 3+2*NUM_HEADING_BIN, 3+2*NUM_HEADING_BIN+NUM_SIZE_CLUSTER).to(device))
     size_residuals_normalized =  torch.index_select(output,dim=1,index=torch.arange( 3+2*NUM_HEADING_BIN+NUM_SIZE_CLUSTER, 3+2*NUM_HEADING_BIN+4*NUM_SIZE_CLUSTER).to(device))
@@ -341,6 +354,63 @@ def get_box3d_corners(center, heading_residuals, size_residuals):
     corners_3d = get_box3d_corners_helper(centers.view(N, 3), headings.view(N),sizes.view( N, 3))
     return corners_3d.view(batch_size, NUM_HEADING_BIN, NUM_SIZE_CLUSTER, 8, 3)
 
+#copy from provider.py
+def rotate_pc_along_y(pc,rot_angle):
+    '''
+    Input:s
+        pc: tensor in shape (B,3,N)
+        rot_angle: 
+        batch_size: B
+    Output:
+        pc: updated pc with XYZ rotated
+    '''
+    batch_size = pc.size()[0]
+    for index in range(batch_size):
+        cosval = torch.cos(torch.unsqueeze(rot_angle[index],0))
+        #print(cosval)
+        #print("-------------------------------------------------")
+        sinval = torch.sin(torch.unsqueeze(rot_angle[index],0))
+        rotmat = torch.cat((torch.cat((cosval, sinval),1),torch.cat((-sinval, cosval),1)),0)
+        #print(rotmat)
+        pc2=torch.squeeze(pc[index,[0,2],:])
+        #print(pc.size())
+        #print("-------------pc.size--------------")    
+        pc2=torch.mm(rotmat,pc2)
+        pc3=torch.cat((torch.unsqueeze(pc2[0,:],dim=0),torch.unsqueeze(pc[index,1,:],dim=0),torch.unsqueeze(pc2[1,:],0)),0)
+        if index==0:
+            pc4=torch.unsqueeze(pc3,dim=0)
+        else:
+            pc4=torch.cat((pc4,torch.unsqueeze(pc3,dim=0)),0)
+    return pc4
+
+def rotate_center_along_y(pc,rot_angle):
+    '''
+    Input:s
+        pc: tensor in shape (B,3,1)
+        rot_angle: 
+        batch_size: B
+    Output:
+        pc: updated pc with XYZ rotated
+    '''
+    batch_size = pc.size()[0]
+    for index in range(batch_size):
+        cosval = torch.cos(torch.unsqueeze(rot_angle[index],0))
+        #print(cosval)
+        #print("-------------------------------------------------")
+        sinval = torch.sin(torch.unsqueeze(rot_angle[index],0))
+        rotmat = torch.cat((torch.cat((cosval, sinval),1),torch.cat((-sinval, cosval),1)),0)
+        #print(rotmat)
+        pc2=torch.squeeze(pc[index,[0,2],:])
+        pc2=torch.unsqueeze(pc2,1)
+        #print(pc.size())
+        #print("-------------pc.size--------------")    
+        pc2=torch.mm(rotmat,pc2)
+        pc3=torch.cat((torch.unsqueeze(pc2[0,:],dim=0),torch.unsqueeze(pc[index,1,:],dim=0),torch.unsqueeze(pc2[1,:],0)),0)
+        if index==0:
+            pc4=torch.unsqueeze(pc3,dim=0)
+        else:
+            pc4=torch.cat((pc4,torch.unsqueeze(pc3,dim=0)),0)
+    return pc4
 
 def huber_loss(error, delta=1.0):  # (B,), ()
     abs_error = torch.abs(error)
@@ -375,31 +445,46 @@ def get_loss(mask_label, center_label, \
     mask_loss =  F.cross_entropy(end_points['mask_logits'],mask_label,reduction='mean')
     # 计算一个 batch 的 mean_loss,  softmax + cross_entry_loss
     # Center regression losses
-    center_loss = huber_loss(torch.norm(center_label - end_points['center'],dim=1), delta=2.0)
+        #stage1_center 未旋转前较精确中心
     stage1_center_loss = huber_loss(torch.norm(end_points['stage1_center']-center_label,dim=1),delta=1.0)
+        #对center_label进行相对坐标下的旋转
+    rotate_center=torch.unsqueeze(center_label-end_points['stage1_center'],2)
+    rotate_center_label=torch.squeeze(rotate_center_along_y(rotate_center,end_points['rotate_angle']))
+
+    center_loss = huber_loss(torch.norm(rotate_center_label - end_points['center_boxnet'],dim=1), delta=2.0)
+
     # Heading loss
-    #print(heading_class_label)
-    #print("----------------------heading_class_label-------------------------")
-    #print(heading_residual_label)
-    #print("----------------------heading_residual_label-------------------------")
-    if random_flip:
-        if np.random.random()>0.5:
-            rotate_angle=class2angle(heading_class_label,heading_residual_label,NUM_HEADING_BIN)+end_points['rotate_angle']
-        else:
-            rotate_angle=class2angle(heading_class_label,heading_residual_label,NUM_HEADING_BIN)-end_points['rotate_angle']
-    heading_class_label,heading_residual_label=angle2class(end_points['rotate_angle'],NUM_HEADING_BIN)
-    #print(heading_class_label)
-    #print("----------------------heading_class_label-------------------------")
-    #print(heading_residual_label)
-    #print("----------------------heading_residual_label-------------------------")
+    #粗略旋转loss
+    rotate_class_loss = F.cross_entropy(end_points['rotate_scores'], heading_class_label,reduction='mean')
+    hcls_onehot = torch.eye(NUM_HEADING_BIN)[heading_class_label.long()].to(device)
+    rotate_residual_normalized_label = heading_residual_label / (np.pi / NUM_HEADING_BIN)
+    temp1 = hcls_onehot.float()
+    temp = torch.sum(end_points['rotate_residuals_normalized']*temp1, dim=1).float()
+    rotate_residual_normalized_loss =huber_loss(temp-rotate_residual_normalized_label,delta=1.0)
+
+    #将heading label转angle并与预测angle相加再转换为新的label 对应于局部坐标下的class和residual
+    rotate_angle=class2angle(heading_class_label,heading_residual_label,NUM_HEADING_BIN)
+    rotate_angle=torch.unsqueeze(rotate_angle,1)+end_points['rotate_angle']
+    heading_class_label,heading_residual_label=angle2class(rotate_angle,NUM_HEADING_BIN)
+
     end_points['batch_hclass']=heading_class_label
     end_points['batch_hres']=heading_residual_label
-    heading_class_loss = F.cross_entropy(end_points['heading_scores'], heading_class_label,reduction='mean')
+
+    #精确loss
+    heading_class_loss = F.cross_entropy(end_points['rotate_heading_scores'], heading_class_label,reduction='mean')
     hcls_onehot = torch.eye(NUM_HEADING_BIN)[heading_class_label.long()].to(device)
     heading_residual_normalized_label = heading_residual_label / (np.pi / NUM_HEADING_BIN)
     temp1 = hcls_onehot.float()
-    temp = torch.sum(end_points['heading_residuals_normalized']*temp1, dim=1).float()
+    temp = torch.sum(end_points['rotate_heading_residuals_normalized']*temp1, dim=1).float()
     heading_residual_normalized_loss =huber_loss(temp-heading_residual_normalized_label,delta=1.0)
+
+    #不确定怎么得到全局的heading和residual
+    angle=class2angles(end_points['rotate_scores'],end_points['rotate_residuals'],NUM_HEADING_BIN)
+    angle2=class2angles(end_points['rotate_heading_scores'],end_points['rotate_heading_residuals'],NUM_HEADING_BIN)\
+        -angle
+    end_points['heading_scores'],end_points['heading_residuals']=angle2class(angle,NUM_HEADING_BIN)
+    end_points['heading_residuals_normalized']=end_points['heading_residuals']/(np.pi / NUM_HEADING_BIN)
+
     # Size loss
     size_class_loss = F.cross_entropy(end_points['size_scores'],size_class_label,reduction='mean')
     scls_onehot = torch.eye(NUM_SIZE_CLUSTER)[size_class_label.long()].to(device)
@@ -417,7 +502,7 @@ def get_loss(mask_label, center_label, \
     # We select the predicted corners corresponding to the
     # GT heading bin and size cluster.
 
-    corners_3d = get_box3d_corners(end_points['center'], end_points['heading_residuals'], end_points['size_residuals'])             # (B,NH,NS,8,3)
+    corners_3d = get_box3d_corners(end_points['center_boxnet'], end_points['rotate_heading_residuals'], end_points['size_residuals'])             # (B,NH,NS,8,3)
     gt_mask = hcls_onehot.unsqueeze(2).repeat(1, 1, NUM_SIZE_CLUSTER) * scls_onehot.unsqueeze(1).repeat(1, NUM_HEADING_BIN, 1).to(device)  # (B,NH,NS)
 
     corners_3d_pred = torch.sum(gt_mask.unsqueeze(-1).unsqueeze(-1).float()* corners_3d, dim=[1, 2])  # (B,8,3)
@@ -429,20 +514,22 @@ def get_loss(mask_label, center_label, \
     mean_sizes = torch.from_numpy(g_mean_size_arr).float().to(device).view(1, NUM_SIZE_CLUSTER, 3)  # (1,NS,3)
     size_label = mean_sizes + size_residual_label.unsqueeze(1)  # (1,NS,3) + (B,1,3) = (B,NS,3)
     size_label = torch.sum(scls_onehot.float().unsqueeze(-1).float() * size_label, dim=1)  # (B,3)
-    corners_3d_gt = get_box3d_corners_helper(center_label, heading_label, size_label)  # (B,8,3)
-    corners_3d_gt_flip = get_box3d_corners_helper(center_label, heading_label + np.pi, size_label)  # (B,8,3)
+    corners_3d_gt = get_box3d_corners_helper(rotate_center_label, heading_label, size_label)  # (B,8,3)
+    corners_3d_gt_flip = get_box3d_corners_helper(rotate_center_label, heading_label + np.pi, size_label)  # (B,8,3)
     corner_dist_gt = torch.norm(corners_3d_pred-corners_3d_gt,dim=2)
     corner_dist_gt_flip = torch.norm(corners_3d_pred-corners_3d_gt_flip,dim=2)
     corners_loss = huber_loss(torch.min(corner_dist_gt,corner_dist_gt_flip),delta=1.0)
     # Weighted sum of all losses
-    total_loss = mask_loss + box_loss_weight * (center_loss +heading_class_loss + size_class_loss +heading_residual_normalized_loss * 20 +size_residual_normalized_loss * 20 + stage1_center_loss + corner_loss_weight * corners_loss)
+    total_loss = mask_loss + box_loss_weight * (center_loss + rotate_class_loss + heading_class_loss + size_class_loss + rotate_residual_normalized_loss*20 + heading_residual_normalized_loss * 20 +size_residual_normalized_loss * 20 + stage1_center_loss + corner_loss_weight * corners_loss)
 
     losses = {
         'total_loss': total_loss,
         'mask_loss': mask_loss,
         'center_loss':  center_loss,
+        'rotate_class_loss': rotate_class_loss,
         'heading_class_loss': heading_class_loss,
         'size_class_loss':  size_class_loss,
+        'rotate_residual_normalized_loss' : rotate_residual_normalized_loss,
         'heading_residual_normalized_loss':  heading_residual_normalized_loss ,
         'size_residual_normalized_loss': size_residual_normalized_loss,
         'stage1_center_loss':  stage1_center_loss,

@@ -11,7 +11,7 @@ import numpy as np
 from model_util import NUM_HEADING_BIN, NUM_SIZE_CLUSTER, NUM_OBJECT_POINT
 from model_util import g_type_mean_size,g_mean_size_arr
 from model.model_util import init_fpointnet
-from   model.model_util import get_loss
+from model.model_util import get_loss
 from train.train import compute_summary
 import torch.nn.functional as F
 from model.frustum_pointnets_v1 import FPointNet
@@ -36,7 +36,7 @@ class TestingUtil(object):
     def __init__(self):
         self.NUM_POINT = 1024
         self.DATASET =  provider.FrustumDataset(npoints=self.NUM_POINT, split='train',
-        rotate_to_center=True, random_flip=False, random_shift=False, one_hot=True)
+        rotate_to_center=False, random_flip=False, random_shift=False, one_hot=True)
         self.NUM_CHANNEL = 4         #加上雷达强度
         self.normal_mean = 0         #正态分布的均值
         self.normal_var =1           #正态分布的方差

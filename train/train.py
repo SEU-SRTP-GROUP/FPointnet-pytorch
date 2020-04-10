@@ -202,7 +202,7 @@ def train_one_epoch(fpointnet,device,optimizer):
         loss_val = loss.cpu().detach().numpy()
         logits_val = end_points['mask_logits'].cpu().detach().numpy()
         iou2ds,iou3ds,accuracy = compute_summary(end_points,labels_pl ,batch_center,\
-                                                 end_points['batch_hclass'].cpu().data.numpy(),end_points['batch_hres'].cpu().data.numpy(),batch_sclass,batch_sres)
+                                                 batch_hclass,batch_hres,batch_sclass,batch_sres)
         preds_val = np.argmax(logits_val, 1)
         correct = np.sum(preds_val == batch_label)
         total_correct += correct
@@ -293,8 +293,8 @@ def eval_one_epoch(fpointnet,device):
         #get data   and transform dataformat from torch style to tensorflow style
         loss_val = loss.cpu().data.numpy()
         logits_val = end_points['mask_logits'].data.cpu().numpy()
-        iou2ds,iou3ds,accuracy = compute_summary(end_points,batch_label_gpu,batch_center,end_points['batch_hclass'].cpu().data.numpy(), \
-            end_points['batch_hres'].cpu().data.numpy(),batch_sclass,batch_sres)
+        iou2ds,iou3ds,accuracy = compute_summary(end_points,batch_label_gpu,batch_center,batch_hclass,batch_hres, \
+            batch_sclass,batch_sres)
         preds_val = np.argmax(logits_val, 1)
         correct = np.sum(preds_val == batch_label)
         total_correct += correct
