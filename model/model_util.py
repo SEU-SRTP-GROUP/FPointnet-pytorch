@@ -434,7 +434,7 @@ def get_loss(mask_label, center_label, \
     # Center regression losses
         #stage1_center 未旋转前较精确中心
     stage1_center_loss = huber_loss(torch.norm(end_points['stage1_center']-center_label,dim=1),delta=1.0)
-        #对center_label进行相对坐标下的旋转
+        #对center_label平移至局部坐标系下并旋转 与 局部坐标系下的box center对应
     rotate_center=torch.unsqueeze(center_label-end_points['stage1_center'],2)
     rotate_center_label=torch.squeeze(rotate_center_along_y(rotate_center,end_points['rotate_angle']))
 
@@ -442,7 +442,7 @@ def get_loss(mask_label, center_label, \
 
     
     # Heading loss
-    #粗略旋转loss
+    #粗略旋转loss 由score 和 residual求loss
     rotate_class_loss = F.cross_entropy(end_points['rotate_scores'], heading_class_label,reduction='mean')
     hcls_onehot = torch.eye(NUM_HEADING_BIN)[heading_class_label.long()].to(device)
     heading_residual_normalized_label = heading_residual_label / (np.pi / NUM_HEADING_BIN)
@@ -452,7 +452,7 @@ def get_loss(mask_label, center_label, \
 
     #将heading label转angle并与预测angle相加再转换为新的label 对应于局部坐标下的class和residual
     rotate_angle=class2angle(heading_class_label,heading_residual_label,NUM_HEADING_BIN)
-    rotate_angle=torch.unsqueeze(rotate_angle,1)-end_points['rotate_angle']
+    rotate_angle=torch.unsqueeze(rotate_angle,1)-end_points['rotate_angle'] #精确旋转角度的label角 由其计算局部坐标系下的class和 residual label
     heading_class_label,heading_residual_label=angle2class(rotate_angle,NUM_HEADING_BIN)
 
     #精确loss
