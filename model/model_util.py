@@ -463,11 +463,12 @@ def get_loss(mask_label, center_label, \
     temp = torch.sum(end_points['rotate_heading_residuals_normalized']*temp1, dim=1).float()
     heading_residual_normalized_loss =huber_loss(temp-heading_residual_normalized_label,delta=1.0)
 
+    #获取局部坐标系下旋转的精确角
     rotate_heading_class=torch.max(end_points['rotate_heading_scores'],1)[1]
     hcls_onehot = torch.eye(NUM_HEADING_BIN)[rotate_heading_class.long()].to(device)
     temp1 = hcls_onehot.float()
     temp = torch.sum(end_points['rotate_heading_residuals_normalized']*temp1, dim=1).float()
-    #全局heading scores和residuals
+    #将粗略角和精确角相加（还是减），获取全局heading scores和residuals，用于IOU
     precise_angle = class2angle(rotate_heading_class,temp*(np.pi / NUM_HEADING_BIN),NUM_HEADING_BIN)
     scores,residuals = angle2class(torch.squeeze(end_points['rotate_angle'])+precise_angle,NUM_HEADING_BIN)
     end_points['heading_scores'] = torch.eye(NUM_HEADING_BIN)[scores.long()].to(device)
