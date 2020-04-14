@@ -251,19 +251,6 @@ def class2angle(pred_cls, residual, num_class, to_label_format=True):
             angle[index] = angle[index] - 2*np.pi
     return angle
 
-def class2angles(pred_cls, residual, num_class, to_label_format=True):
-    ''' Inverse function to angle2class.
-    If to_label_format, adjust angle to the range as in labels.
-    '''
-    angle_per_class = 2*np.pi/float(num_class)
-    angle_center = pred_cls * angle_per_class
-    angle = angle_center.float() +residual
-    for index in range(angle.size()[0]):
-        for index2 in range(angle.size()[1]):
-            if to_label_format and angle[index][index2]>np.pi:
-                angle[index][index2] = angle[index][index2] - 2*np.pi
-    return angle
-
 def parse_output_to_tensors(output, end_points):
     '''
     @author: chonepieceyb
@@ -453,22 +440,22 @@ def get_loss(mask_label, center_label, \
 
     center_loss = huber_loss(torch.norm(rotate_center_label - end_points['center_boxnet'],dim=1), delta=2.0)
 
+    
     # Heading loss
+
+    #由angle获取score和residual(能否直接使用。)
+    rotate_scores,rotate_residuals=angle2class(end_points['rotate_angle'],NUM_HEADING_BIN)
+    end_points['rotate_scores'] = torch.eye(NUM_HEADING_BIN)[rotate_scores.long()].to(device)
     #粗略旋转loss
     rotate_class_loss = F.cross_entropy(end_points['rotate_scores'], heading_class_label,reduction='mean')
-    hcls_onehot = torch.eye(NUM_HEADING_BIN)[heading_class_label.long()].to(device)
+    rotate_residuals_normalized = rotate_residuals / (np.pi / NUM_HEADING_BIN)
     rotate_residual_normalized_label = heading_residual_label / (np.pi / NUM_HEADING_BIN)
-    temp1 = hcls_onehot.float()
-    temp = torch.sum(end_points['rotate_residuals_normalized']*temp1, dim=1).float()
-    rotate_residual_normalized_loss =huber_loss(temp-rotate_residual_normalized_label,delta=1.0)
+    rotate_residual_normalized_loss =huber_loss(rotate_residuals_normalized-rotate_residual_normalized_label,delta=1.0)
 
     #将heading label转angle并与预测angle相加再转换为新的label 对应于局部坐标下的class和residual
     rotate_angle=class2angle(heading_class_label,heading_residual_label,NUM_HEADING_BIN)
     rotate_angle=torch.unsqueeze(rotate_angle,1)+end_points['rotate_angle']
     heading_class_label,heading_residual_label=angle2class(rotate_angle,NUM_HEADING_BIN)
-
-    end_points['batch_hclass']=heading_class_label
-    end_points['batch_hres']=heading_residual_label
 
     #精确loss
     heading_class_loss = F.cross_entropy(end_points['rotate_heading_scores'], heading_class_label,reduction='mean')
@@ -478,12 +465,12 @@ def get_loss(mask_label, center_label, \
     temp = torch.sum(end_points['rotate_heading_residuals_normalized']*temp1, dim=1).float()
     heading_residual_normalized_loss =huber_loss(temp-heading_residual_normalized_label,delta=1.0)
 
-    #不确定怎么得到全局的heading和residual
-    angle=class2angles(end_points['rotate_scores'],end_points['rotate_residuals'],NUM_HEADING_BIN)
-    angle2=class2angles(end_points['rotate_heading_scores'],end_points['rotate_heading_residuals'],NUM_HEADING_BIN)\
-        -angle
-    end_points['heading_scores'],end_points['heading_residuals']=angle2class(angle,NUM_HEADING_BIN)
-    end_points['heading_residuals_normalized']=end_points['heading_residuals']/(np.pi / NUM_HEADING_BIN)
+    #全局heading scores和residuals
+    precise_angle = class2angle(heading_class_label,temp*(np.pi / NUM_HEADING_BIN),NUM_HEADING_BIN)
+    scores,residual = angle2class(torch.squeeze(-end_points['rotate_angle'])+precise_angle,NUM_HEADING_BIN)
+    end_points['heading_scores'] = torch.eye(NUM_HEADING_BIN)[scores.long()].to(device)
+    end_points['heading_residuals_normalized'] = torch.unsqueeze(residual,1)*end_points['heading_scores']
+    end_points['heading_residuals'] = end_points['heading_residuals_normalized']*(np.pi / NUM_HEADING_BIN)
 
     # Size loss
     size_class_loss = F.cross_entropy(end_points['size_scores'],size_class_label,reduction='mean')
@@ -535,4 +522,6 @@ def get_loss(mask_label, center_label, \
         'stage1_center_loss':  stage1_center_loss,
         'corners_loss': corners_loss ,
     }
+    print(losses)
+    print("-------------------losses--------------------")
     return losses['total_loss'] ,losses

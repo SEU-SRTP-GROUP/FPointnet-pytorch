@@ -153,7 +153,7 @@ class FPointNet(nn.Module):
         self.fc_Rnet_2   = full_connected_block("Rnet5_relu",256,128,self.config.USE_BN,linear_parm_dict=linear_parm_dict,
                                                      bn_parm_dict=bn_parm_dict)
 
-        self.fc_Rnet_3 = nn.Linear(128,1 + NUM_HEADING_BIN * 2)
+        self.fc_Rnet_3 = nn.Linear(128, 1)
         ##############   3d box 回归参数 ######################
         self.conv_3dbox_1 = conv2d_block("3dbox1_relu", 3, 128, [1, 1], self.config.USE_BN,
                                              conv_parm_dict=conv_parm_dict,
@@ -276,7 +276,7 @@ class FPointNet(nn.Module):
         net = torch.cat((net,one_hot_vec),dim=1)                # (B,259)
         net = self.fc_Rnet_1(net)                        # fc+bn+relu    [B,259]->[B,256]
         net = self.fc_Rnet_2(net)                         # fc+bn+relu    [B,256]->[B,128]
-        predicted_angle = self.fc_Rnet_3(net)            # fc           [B,128]->[B,1 + NUM_HEADING_BIN * 2]
+        predicted_angle = self.fc_Rnet_3(net)            # fc           [B,128]->[B,1]
         return predicted_angle
 
     def forward(self, point_cloud, one_hot_vec):
@@ -305,17 +305,17 @@ class FPointNet(nn.Module):
         object_point_cloud_xyz_inter = object_point_cloud_xyz - torch.unsqueeze(center_delta,dim=2)                    # -(B,3,1)
 
         # Get rotate angle
-        #为了计算初次旋转的loss，对应于提供的heading label，训练出初次的class和residual（不知道怎么通过angle算出）
-        rotate_para=self.get_rotate_regression_net(object_point_cloud_xyz_inter,one_hot_vec)
-        frustum_angle=torch.index_select(rotate_para,dim=1,index=torch.arange(0,1).to(device))
+        #angle
+        frustum_angle=self.get_rotate_regression_net(object_point_cloud_xyz_inter,one_hot_vec)
+        #frustum_angle=torch.index_select(rotate_para,dim=1,index=torch.arange(0,1).to(device))
 
-        rotate_scores = torch.index_select(rotate_para,dim=1,index=torch.arange(1,1+NUM_HEADING_BIN).to(device))
-        rotate_residuals_normalized = torch.index_select(rotate_para,dim=1,index=torch.arange(1+NUM_HEADING_BIN, 1+2*NUM_HEADING_BIN).to(device))
-        self.end_points['rotate_scores'] = rotate_scores # BxNUM_HEADING_BIN
-        self.end_points['rotate_residuals_normalized'] = \
-            rotate_residuals_normalized # BxNUM_HEADING_BIN (-1 to 1)
-        self.end_points['rotate_residuals'] = \
-            rotate_residuals_normalized * (np.pi / NUM_HEADING_BIN)  # BxNUM_HEADING_BIN
+        #rotate_scores = torch.index_select(rotate_para,dim=1,index=torch.arange(0,NUM_HEADING_BIN).to(device))
+        #rotate_residuals_normalized = torch.index_select(rotate_para,dim=1,index=torch.arange(NUM_HEADING_BIN, 2*NUM_HEADING_BIN).to(device))
+        #self.end_points['rotate_scores'] = rotate_scores # BxNUM_HEADING_BIN
+        #self.end_points['rotate_residuals_normalized'] = \
+        #    rotate_residuals_normalized # BxNUM_HEADING_BIN (-1 to 1)
+        #self.end_points['rotate_residuals'] = \
+        #    rotate_residuals_normalized * (np.pi / NUM_HEADING_BIN)  # BxNUM_HEADING_BIN
 
         object_point_cloud_xyz_new=rotate_pc_along_y(object_point_cloud_xyz_inter,frustum_angle)
 
