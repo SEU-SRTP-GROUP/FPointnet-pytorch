@@ -442,19 +442,17 @@ def get_loss(mask_label, center_label, \
 
     
     # Heading loss
-
-    #由angle获取score和residual(能否直接使用。)
-    rotate_scores,rotate_residuals=angle2class(end_points['rotate_angle'],NUM_HEADING_BIN)
-    end_points['rotate_scores'] = torch.eye(NUM_HEADING_BIN)[rotate_scores.long()].to(device)
     #粗略旋转loss
     rotate_class_loss = F.cross_entropy(end_points['rotate_scores'], heading_class_label,reduction='mean')
-    rotate_residuals_normalized = rotate_residuals / (np.pi / NUM_HEADING_BIN)
-    rotate_residual_normalized_label = heading_residual_label / (np.pi / NUM_HEADING_BIN)
-    rotate_residual_normalized_loss =huber_loss(rotate_residuals_normalized-rotate_residual_normalized_label,delta=1.0)
+    hcls_onehot = torch.eye(NUM_HEADING_BIN)[heading_class_label.long()].to(device)
+    heading_residual_normalized_label = heading_residual_label / (np.pi / NUM_HEADING_BIN)
+    temp1 = hcls_onehot.float()
+    temp = torch.sum(end_points['rotate_residuals_normalized']*temp1, dim=1).float()
+    rotate_residual_normalized_loss =huber_loss(temp-heading_residual_normalized_label,delta=1.0)
 
     #将heading label转angle并与预测angle相加再转换为新的label 对应于局部坐标下的class和residual
     rotate_angle=class2angle(heading_class_label,heading_residual_label,NUM_HEADING_BIN)
-    rotate_angle=torch.unsqueeze(rotate_angle,1)+end_points['rotate_angle']
+    rotate_angle=torch.unsqueeze(rotate_angle,1)-end_points['rotate_angle']
     heading_class_label,heading_residual_label=angle2class(rotate_angle,NUM_HEADING_BIN)
 
     #精确loss
@@ -465,13 +463,18 @@ def get_loss(mask_label, center_label, \
     temp = torch.sum(end_points['rotate_heading_residuals_normalized']*temp1, dim=1).float()
     heading_residual_normalized_loss =huber_loss(temp-heading_residual_normalized_label,delta=1.0)
 
+    rotate_heading_class=torch.max(end_points['rotate_heading_scores'],1)[1]
+    hcls_onehot = torch.eye(NUM_HEADING_BIN)[rotate_heading_class.long()].to(device)
+    temp1 = hcls_onehot.float()
+    temp = torch.sum(end_points['rotate_heading_residuals_normalized']*temp1, dim=1).float()
     #全局heading scores和residuals
-    precise_angle = class2angle(heading_class_label,temp*(np.pi / NUM_HEADING_BIN),NUM_HEADING_BIN)
-    scores,residual = angle2class(torch.squeeze(-end_points['rotate_angle'])+precise_angle,NUM_HEADING_BIN)
+    precise_angle = class2angle(rotate_heading_class,temp*(np.pi / NUM_HEADING_BIN),NUM_HEADING_BIN)
+    scores,residuals = angle2class(torch.squeeze(end_points['rotate_angle'])+precise_angle,NUM_HEADING_BIN)
     end_points['heading_scores'] = torch.eye(NUM_HEADING_BIN)[scores.long()].to(device)
-    end_points['heading_residuals_normalized'] = torch.unsqueeze(residual,1)*end_points['heading_scores']
+    end_points['heading_residuals_normalized'] = torch.unsqueeze(residuals,1)*end_points['heading_scores']
     end_points['heading_residuals'] = end_points['heading_residuals_normalized']*(np.pi / NUM_HEADING_BIN)
-
+    #print(torch.squeeze(-end_points['rotate_angle'])+precise_angle)
+    #print("----------------------------get loss----------------------")
     # Size loss
     size_class_loss = F.cross_entropy(end_points['size_scores'],size_class_label,reduction='mean')
     scls_onehot = torch.eye(NUM_SIZE_CLUSTER)[size_class_label.long()].to(device)
@@ -522,6 +525,4 @@ def get_loss(mask_label, center_label, \
         'stage1_center_loss':  stage1_center_loss,
         'corners_loss': corners_loss ,
     }
-    print(losses)
-    print("-------------------losses--------------------")
     return losses['total_loss'] ,losses

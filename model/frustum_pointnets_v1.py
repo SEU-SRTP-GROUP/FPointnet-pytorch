@@ -12,6 +12,7 @@ sys.path.append(os.path.join(ROOT_DIR, 'utils'))
 from model_util import NUM_HEADING_BIN, NUM_SIZE_CLUSTER, NUM_OBJECT_POINT
 from model_util import rotate_pc_along_y
 from model_util import rotate_center_along_y
+from model_util import class2angle
 from model_util import point_cloud_masking
 from model_util import parse_output_to_tensors
 from model_util import init_fpointnet
@@ -153,7 +154,7 @@ class FPointNet(nn.Module):
         self.fc_Rnet_2   = full_connected_block("Rnet5_relu",256,128,self.config.USE_BN,linear_parm_dict=linear_parm_dict,
                                                      bn_parm_dict=bn_parm_dict)
 
-        self.fc_Rnet_3 = nn.Linear(128, 1)
+        self.fc_Rnet_3 = nn.Linear(128, NUM_HEADING_BIN * 2)
         ##############   3d box 回归参数 ######################
         self.conv_3dbox_1 = conv2d_block("3dbox1_relu", 3, 128, [1, 1], self.config.USE_BN,
                                              conv_parm_dict=conv_parm_dict,
@@ -266,6 +267,7 @@ class FPointNet(nn.Module):
         :param one_hot_vec:   TF tensor in shape (B,3)  length-3 vectors indicating predicted object type
         :return:  predicted_center:  tensor in shape (B,3)
         '''
+        device = object_point_cloud.device
         num_point = object_point_cloud.size()[2]
         net = torch.unsqueeze(object_point_cloud,3)       #change shape to ( B,C,num_points,1)
         net = self.conv_Rnet_1(net)                        # conv_block conv+bn+relu ,  [B,C,M,1]->[B,128,M,1]
@@ -276,7 +278,19 @@ class FPointNet(nn.Module):
         net = torch.cat((net,one_hot_vec),dim=1)                # (B,259)
         net = self.fc_Rnet_1(net)                        # fc+bn+relu    [B,259]->[B,256]
         net = self.fc_Rnet_2(net)                         # fc+bn+relu    [B,256]->[B,128]
-        predicted_angle = self.fc_Rnet_3(net)            # fc           [B,128]->[B,1]
+        predicted_para = self.fc_Rnet_3(net)            # fc           [B,128]->[B,1]
+        rotate_scores = torch.index_select(predicted_para,dim=1,index=torch.arange(0,NUM_HEADING_BIN).to(device))
+        rotate_residuals_normalized = torch.index_select(predicted_para,dim=1,index=torch.arange(NUM_HEADING_BIN, 2*NUM_HEADING_BIN).to(device))
+        self.end_points['rotate_scores'] = rotate_scores # BxNUM_HEADING_BIN
+        self.end_points['rotate_residuals_normalized'] = \
+           rotate_residuals_normalized # BxNUM_HEADING_BIN (-1 to 1)
+        self.end_points['rotate_residuals'] = \
+           rotate_residuals_normalized * (np.pi / NUM_HEADING_BIN)  # BxNUM_HEADING_BIN
+        rotate_class=torch.max(rotate_scores,1)[1]
+        hcls_onehot = torch.eye(NUM_HEADING_BIN)[rotate_class.long()].to(device)
+        temp1 = hcls_onehot.float()
+        temp = torch.sum(rotate_residuals_normalized*temp1, dim=1).float()
+        predicted_angle=class2angle(rotate_class,temp,NUM_HEADING_BIN)
         return predicted_angle
 
     def forward(self, point_cloud, one_hot_vec):
@@ -289,7 +303,6 @@ class FPointNet(nn.Module):
             length-3 vectors indicating predicted object type
         :return:  end_points: dict (map from name strings to  tensors)
         '''
-        device = point_cloud.device
         logits =  self.get_instance_seg_v1_net(
             point_cloud, one_hot_vec
         )  # 这里接口可能有点问题
@@ -305,18 +318,8 @@ class FPointNet(nn.Module):
         object_point_cloud_xyz_inter = object_point_cloud_xyz - torch.unsqueeze(center_delta,dim=2)                    # -(B,3,1)
 
         # Get rotate angle
-        #angle
-        frustum_angle=self.get_rotate_regression_net(object_point_cloud_xyz_inter,one_hot_vec)
-        #frustum_angle=torch.index_select(rotate_para,dim=1,index=torch.arange(0,1).to(device))
-
-        #rotate_scores = torch.index_select(rotate_para,dim=1,index=torch.arange(0,NUM_HEADING_BIN).to(device))
-        #rotate_residuals_normalized = torch.index_select(rotate_para,dim=1,index=torch.arange(NUM_HEADING_BIN, 2*NUM_HEADING_BIN).to(device))
-        #self.end_points['rotate_scores'] = rotate_scores # BxNUM_HEADING_BIN
-        #self.end_points['rotate_residuals_normalized'] = \
-        #    rotate_residuals_normalized # BxNUM_HEADING_BIN (-1 to 1)
-        #self.end_points['rotate_residuals'] = \
-        #    rotate_residuals_normalized * (np.pi / NUM_HEADING_BIN)  # BxNUM_HEADING_BIN
-
+        frustum_angle=torch.unsqueeze(self.get_rotate_regression_net(object_point_cloud_xyz_inter,one_hot_vec),dim=1)
+        
         object_point_cloud_xyz_new=rotate_pc_along_y(object_point_cloud_xyz_inter,frustum_angle)
 
         # Amodel Box Estimation PointNets
