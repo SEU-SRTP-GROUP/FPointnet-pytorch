@@ -130,7 +130,7 @@ class _ProposalTargetLayer(nn.Module):
             # assert clss[b].sum() > 0
             if clss[b].sum() == 0:
                 continue
-            inds = torch.nonzero(clss[b] == 1).view(-1)
+            inds = torch.nonzero(clss[b] > 0).view(-1)
             for i in range(inds.numel()):
                 ind = inds[i]
                 kpts_targets[b, ind] = kpts_target_data[b, ind]

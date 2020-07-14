@@ -145,11 +145,11 @@ class _StereoRCNN(nn.Module):
         batch_size = im_left_data.size(0)
 
         im_info = im_info.data
-        gt_boxes_left = gt_boxes_left.data
-        gt_boxes_right = gt_boxes_right.data
-        gt_boxes_merge = gt_boxes_merge.data
+        gt_boxes_left = gt_boxes_left.data                 # 左变框数据
+        gt_boxes_right = gt_boxes_right.data               # 右边框数据
+        gt_boxes_merge = gt_boxes_merge.data               # 变框融合数据
         gt_dim_orien = gt_dim_orien.data
-        gt_kpts = gt_kpts.data
+        gt_kpts = gt_kpts.data                           # 关键点
         num_boxes = num_boxes.data
 
         # feed left image data to base model to obtain base feature map
@@ -185,9 +185,10 @@ class _StereoRCNN(nn.Module):
         p2_right = self._upsample_add(p3_right, self.RCNN_latlayer3(c2_right))
         p2_right = self.RCNN_smooth3(p2_right)
         p6_right = self.maxpool2d(p5_right)
+
         #RPN部分
-        rpn_feature_maps_left = [p2_left, p3_left, p4_left, p5_left, p6_left]
-        mrcnn_feature_maps_left = [p2_left, p3_left, p4_left, p5_left]
+        rpn_feature_maps_left = [p2_left, p3_left, p4_left, p5_left, p6_left]   # 送去 rpn网络的特征图，经过 fpn之后
+        mrcnn_feature_maps_left = [p2_left, p3_left, p4_left, p5_left]         # 在 rpn之后的特征图
 
         rpn_feature_maps_right = [p2_right, p3_right, p4_right, p5_right, p6_right]
         mrcnn_feature_maps_right = [p2_right, p3_right, p4_right, p5_right]
@@ -263,8 +264,8 @@ class _StereoRCNN(nn.Module):
         roi_feat_dense = self.RCNN_kpts(roi_feat_dense) # num x 256 x 28 x 28
         kpts_pred_all = self.kpts_class(roi_feat_dense) # num x 6 x cfg.KPTS_GRID x cfg.KPTS_GRID
         kpts_pred_all = kpts_pred_all.sum(2)            # num x 6 x cfg.KPTS_GRID
-        kpts_pred = kpts_pred_all[:,:4,:].contiguous().view(-1, 4*cfg.KPTS_GRID)
-        kpts_prob = F.softmax(kpts_pred,1) # num x (4xcfg.KPTS_GRID) 
+        kpts_pred = kpts_pred_all[:,:4,:].contiguous().view(-1, 4*cfg.KPTS_GRID)    # 每一个 关键点的 概率
+        kpts_prob = F.softmax(kpts_pred,1) # num x (4xcfg.KPTS_GRID)               #  每一个关键点经过 softmax后的概率
 
         left_border_pred = kpts_pred_all[:,4,:].contiguous().view(-1, cfg.KPTS_GRID)
         left_border_prob = F.softmax(left_border_pred,1) # num x cfg.KPTS_GRID
