@@ -48,7 +48,7 @@ class TrainConfig:
         self._restore_model_path = None
         self._train_batch_num = None
 
-class fpointnet_trainer :
+class FPointnetTrainer :
     def __init__(self,config=TrainConfig() ):
         '''
 
@@ -76,6 +76,7 @@ class fpointnet_trainer :
         self.MODEL_BASE_DIR = os.path.join(self.LOG_DIR, 'models')
 
         if not os.path.exists(self.LOG_DIR): os.mkdir(self.LOG_DIR)
+        if not os.path.exists(self.MODEL_BASE_DIR) : os.mkdir(self.MODEL_BASE_DIR )
         self.LOG_FOUT = open(os.path.join(self.LOG_DIR, 'log_train.txt'), 'w')
         #self.LOG_FOUT.write(str(self.FLAGS) + '\n')
 
@@ -129,7 +130,8 @@ class fpointnet_trainer :
                            labels_pl.type(torch.int64))  # end_points['mask_logits'] ,(B,2,N) , 需要调 bug
         accuracy = torch.mean(correct.type(torch.float32))
         return iou2ds, iou3ds, accuracy
-    def train(self,start_index =0, train_batch_num = None, restore_modle_dir = None, train_mode = "default", input_data = None):
+
+    def train(self,restore_modle_dir = None，train_mode = "default",input_data = None,start_index =0, train_batch_num = None):
         '''
 
         :param start_index:  开始的 index
@@ -201,7 +203,7 @@ class fpointnet_trainer :
         if self.config._train_batch_num == None:
             train_idxs = np.arange(0, len(self.TRAIN_DATASET))
             np.random.shuffle(train_idxs)  # 随机
-            num_batches = len(self.TRAIN_DATASET)
+            num_batches = len(self.TRAIN_DATASET)//self.BATCH_SIZE
         else:
             num_batches = int(self.config._train_batch_num)
             num_batches = min(num_batches, len(self.TRAIN_DATASET) // self.BATCH_SIZE)
@@ -397,5 +399,5 @@ class fpointnet_trainer :
         self.EPOCH_CNT += 1
 
 if __name__ == '__main__' :
-    trainer = fpointnet_trainer();
+    trainer = FPointnetTrainer();
     trainer.train();
