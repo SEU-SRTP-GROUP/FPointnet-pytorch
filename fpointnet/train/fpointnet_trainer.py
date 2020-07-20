@@ -131,7 +131,7 @@ class FPointnetTrainer :
         accuracy = torch.mean(correct.type(torch.float32))
         return iou2ds, iou3ds, accuracy
 
-    def train(self,restore_modle_dir = None，train_mode = "default",input_data = None,start_index =0, train_batch_num = None):
+    def train(self,restore_modle_dir = None,train_mode = "default",input_data = None,start_index =0, train_batch_num = None):
         '''
 
         :param start_index:  开始的 index

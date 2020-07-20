@@ -146,7 +146,11 @@ class FrustumDataset(object):
                 self.heading_list = pickle.load(fp,encoding='iso-8859-1')
                 self.size_list = pickle.load(fp,encoding='iso-8859-1')
                 # frustum_angle is clockwise angle from positive x-axis
-                self.frustum_angle_list = pickle.load(fp,encoding='iso-8859-1') 
+                self.frustum_angle_list = pickle.load(fp,encoding='iso-8859-1')
+
+                # index mapping
+                self.cum_num_index  = pickle.load(fp, encoding='iso-8859-1')
+                self.img_index_map = pickle.load(fp, encoding='iso-8859-1')
 
     def __len__(self):
             return len(self.input_list)

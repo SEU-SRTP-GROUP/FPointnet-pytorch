@@ -171,6 +171,8 @@ def extract_frustum_data(idx_filename, split, output_filename, viz=False,
     chonepieceyb=input('中止信息')
     assert(0)
     '''
+    cum_num_index =[]  # 按序号保存每一张图片(顺序）,之前有多少个物体
+    img_index_map ={}  # 按照文件名进行映射，每个值表示该图片的 base index
     id_list = [] # int number
     box2d_list = [] # [xmin,ymin,xmax,ymax]
     box3d_list = [] # (8,3) array in rect camera coord
@@ -182,10 +184,15 @@ def extract_frustum_data(idx_filename, split, output_filename, viz=False,
     box3d_size_list = [] # array of l,w,h
     frustum_angle_list = [] # angle of 2d box center from pos x-axis
 
+    obj_num = 0
     pos_cnt = 0
     all_cnt = 0
     for data_idx in data_idx_list:
         print('------------- ', data_idx)
+
+        # set base index
+        cum_num_index.append(obj_num)
+        img_index_map[data_idx] = obj_num
         calib = dataset.get_calibration(data_idx) # 3 by 4 matrix
         objects = dataset.get_label_objects(data_idx)
         pc_velo = dataset.get_lidar(data_idx)
@@ -248,7 +255,8 @@ def extract_frustum_data(idx_filename, split, output_filename, viz=False,
                 heading_list.append(heading_angle)
                 box3d_size_list.append(box3d_size)
                 frustum_angle_list.append(frustum_angle)
-    
+
+                obj_num +=1
                 # collect statistics
                 pos_cnt += np.sum(label)
                 all_cnt += pc_in_box_fov.shape[0]
@@ -266,7 +274,8 @@ def extract_frustum_data(idx_filename, split, output_filename, viz=False,
         pickle.dump(heading_list, fp)
         pickle.dump(box3d_size_list, fp)
         pickle.dump(frustum_angle_list, fp)
-    
+        pickle.dump(cum_num_index,fp)
+        pickle.dump(img_index_map,fp)
     if viz:
         import mayavi.mlab as mlab
         for i in range(10):
