@@ -3,15 +3,24 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
 import datasets
 import os
 import sys
 import numpy as np
 import torch
+
+import os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(BASE_DIR)
+SRCNN_DIR = os.path.join(ROOT_DIR,'srcnn')
+# sys.path.append(os.path.join(SRCNN_DIR,'lib'))
+sys.path.append(SRCNN_DIR)
+
 from torch.autograd import Variable
 from model.utils.config import cfg
 from datasets.factory import get_imdb
-from lib.roi_data_layer.roibatchLoader import roibatchLoader
+from roi_data_layer.roibatchLoader import roibatchLoader
 from torch.utils.data.sampler import Sampler
 import PIL
 import pdb
@@ -139,8 +148,8 @@ def combined_roidb(imdb_names, training=True):
   else:
     imdb = get_imdb(imdb_names)
 
-  if training:
-    roidb = filter_roidb(roidb)
+  # if training:
+    #roidb = filter_roidb(roidb)
 
   ratio_list, ratio_index = rank_roidb_ratio(roidb)
 

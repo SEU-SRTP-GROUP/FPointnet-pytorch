@@ -43,7 +43,8 @@ class _StereoRCNN(nn.Module):
 
         self.RCNN_roi_align = ROIAlign((cfg.POOLING_SIZE, cfg.POOLING_SIZE), 1.0/16.0, 0)
         self.RCNN_roi_kpts_align = ROIAlign((cfg.POOLING_SIZE*2, cfg.POOLING_SIZE*2), 1.0/16.0, 0)
-        
+
+
     def _init_weights(self):
         def normal_init(m, mean, stddev, truncated=False):
             """
@@ -145,11 +146,11 @@ class _StereoRCNN(nn.Module):
         batch_size = im_left_data.size(0)
 
         im_info = im_info.data
-        gt_boxes_left = gt_boxes_left.data                 # 左变框数据
-        gt_boxes_right = gt_boxes_right.data               # 右边框数据
-        gt_boxes_merge = gt_boxes_merge.data               # 变框融合数据
+        gt_boxes_left = gt_boxes_left.data
+        gt_boxes_right = gt_boxes_right.data
+        gt_boxes_merge = gt_boxes_merge.data
         gt_dim_orien = gt_dim_orien.data
-        gt_kpts = gt_kpts.data                           # 关键点
+        gt_kpts = gt_kpts.data
         num_boxes = num_boxes.data
 
         # feed left image data to base model to obtain base feature map
@@ -177,7 +178,8 @@ class _StereoRCNN(nn.Module):
         c4_right = self.RCNN_layer3(c3_right)
         c5_right = self.RCNN_layer4(c4_right)
         # Top-down
-        p5_right = self.RCNN_toplayer(c5_right)
+        p5_right = self.RCNN_toplayer(c5_right)#    512->256
+        # c4_right = self.upsample_3(c4_right)
         p4_right = self._upsample_add(p5_right, self.RCNN_latlayer1(c4_right))
         p4_right = self.RCNN_smooth1(p4_right)
         p3_right = self._upsample_add(p4_right, self.RCNN_latlayer2(c3_right))
@@ -185,10 +187,9 @@ class _StereoRCNN(nn.Module):
         p2_right = self._upsample_add(p3_right, self.RCNN_latlayer3(c2_right))
         p2_right = self.RCNN_smooth3(p2_right)
         p6_right = self.maxpool2d(p5_right)
-
         #RPN部分
-        rpn_feature_maps_left = [p2_left, p3_left, p4_left, p5_left, p6_left]   # 送去 rpn网络的特征图，经过 fpn之后
-        mrcnn_feature_maps_left = [p2_left, p3_left, p4_left, p5_left]         # 在 rpn之后的特征图
+        rpn_feature_maps_left = [p2_left, p3_left, p4_left, p5_left, p6_left]
+        mrcnn_feature_maps_left = [p2_left, p3_left, p4_left, p5_left]
 
         rpn_feature_maps_right = [p2_right, p3_right, p4_right, p5_right, p6_right]
         mrcnn_feature_maps_right = [p2_right, p3_right, p4_right, p5_right]
@@ -197,12 +198,18 @@ class _StereoRCNN(nn.Module):
             self.RCNN_rpn(rpn_feature_maps_left, rpn_feature_maps_right, \
             im_info, gt_boxes_left, gt_boxes_right, gt_boxes_merge, num_boxes)
 
+        # print("--------left------------")
+        # print(rois_left.size)
+        # print("--------right------------")
+        # print(rois_right.size)
+        # assert()
+
         # if it is training phrase, then use ground trubut bboxes for refining
         if self.training:
             roi_data = self.RCNN_proposal_target(rois_left, rois_right, gt_boxes_left, gt_boxes_right, \
                                                 gt_dim_orien, gt_kpts, num_boxes)
             rois_left, rois_right, rois_label, rois_target_left, rois_target_right,\
-            rois_target_dim_orien, kpts_label_all, kpts_weight_all, rois_inside_ws4, rois_outside_ws4 = roi_data
+            rois_target_dim_orien, kpts_label_all, kpts_weight_all, rois_inside_ws4, rois_outside_ws4, gt_assign_left = roi_data
 
             rois_target_left_right = rois_target_left.new(rois_target_left.size()[0],rois_target_left.size()[1],6)
             rois_target_left_right[:,:,:4] = rois_target_left
@@ -264,8 +271,8 @@ class _StereoRCNN(nn.Module):
         roi_feat_dense = self.RCNN_kpts(roi_feat_dense) # num x 256 x 28 x 28
         kpts_pred_all = self.kpts_class(roi_feat_dense) # num x 6 x cfg.KPTS_GRID x cfg.KPTS_GRID
         kpts_pred_all = kpts_pred_all.sum(2)            # num x 6 x cfg.KPTS_GRID
-        kpts_pred = kpts_pred_all[:,:4,:].contiguous().view(-1, 4*cfg.KPTS_GRID)    # 每一个 关键点的 概率
-        kpts_prob = F.softmax(kpts_pred,1) # num x (4xcfg.KPTS_GRID)               #  每一个关键点经过 softmax后的概率
+        kpts_pred = kpts_pred_all[:,:4,:].contiguous().view(-1, 4*cfg.KPTS_GRID)
+        kpts_prob = F.softmax(kpts_pred,1) # num x (4xcfg.KPTS_GRID) 
 
         left_border_pred = kpts_pred_all[:,4,:].contiguous().view(-1, cfg.KPTS_GRID)
         left_border_prob = F.softmax(left_border_pred,1) # num x cfg.KPTS_GRID
@@ -322,7 +329,7 @@ class _StereoRCNN(nn.Module):
         if self.training:
             rois_label = rois_label.view(batch_size, -1)
 
-        return rois_left, rois_right, cls_prob, bbox_pred, dim_orien_pred, \
+        return rois_left, rois_right, cls_prob, bbox_pred, gt_assign_left, dim_orien_pred, \
                kpts_prob, left_border_prob, right_border_prob, rpn_loss_cls, rpn_loss_bbox_left_right, \
                self.RCNN_loss_cls, self.RCNN_loss_bbox, self.RCNN_loss_dim_orien, self.RCNN_loss_kpts, rois_label  
 

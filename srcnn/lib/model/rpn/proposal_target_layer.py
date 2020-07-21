@@ -63,8 +63,11 @@ class _ProposalTargetLayer(nn.Module):
 
         bbox_outside_weights = (bbox_inside_weights > 0).float()
 
+        # print("boxx target : ")
+        # print(bbox_targets_left.shape)
+        # assert()
         return rois_left, rois_right, labels, bbox_targets_left, bbox_targets_right,\
-               dim_orien_targets, kpts_targets, kpts_weight, bbox_inside_weights, bbox_outside_weights
+               dim_orien_targets, kpts_targets, kpts_weight, bbox_inside_weights, bbox_outside_weights, gt_assign_left
 
     def backward(self, top, propagate_down, bottom):
         """This layer does not propagate gradients."""
@@ -74,13 +77,14 @@ class _ProposalTargetLayer(nn.Module):
         """Reshaping happens during the call to forward."""
         pass
 
+    #吧label非零位置对应索引的bbox_target_data取出存入bbox_targets返回
     def _get_bbox_regression_labels_pytorch(self, bbox_target_data, labels_batch, num_classes):
         """Bounding-box regression targets (bbox_target_data) are stored in a
         compact form b x N x (class, tx, ty, tw, th)
         This function expands those targets into the 4-of-4*K representation used
         by the network (i.e. only one class has non-zero targets).
         Returns:
-            bbox_target (ndarray): b x N x 4K blob of regression targets
+            bbox_target (ndarray): b x N x 4K blob of regression targets  1*512*4
             bbox_inside_weights (ndarray): b x N x 4K blob of loss weights
         """
         batch_size = labels_batch.size(0)
@@ -93,6 +97,7 @@ class _ProposalTargetLayer(nn.Module):
             # assert clss[b].sum() > 0
             if clss[b].sum() == 0:
                 continue
+
             inds = torch.nonzero(clss[b] > 0).view(-1)
             for i in range(inds.numel()):
                 ind = inds[i]
@@ -131,12 +136,14 @@ class _ProposalTargetLayer(nn.Module):
             if clss[b].sum() == 0:
                 continue
             inds = torch.nonzero(clss[b] > 0).view(-1)
+
             for i in range(inds.numel()):
                 ind = inds[i]
                 kpts_targets[b, ind] = kpts_target_data[b, ind]
                 weight[b, ind] = kpts_weight[b,ind]
         return kpts_targets, weight
 
+    #对roi进行微调，使得经过微调后的窗口跟gt更接近
     def _compute_targets_pytorch(self, ex_rois, gt_rois):
 
         assert ex_rois.size(1) == gt_rois.size(1)
@@ -200,8 +207,11 @@ class _ProposalTargetLayer(nn.Module):
         # overlaps: (rois x gt_boxes)
         overlaps_left = bbox_overlaps_batch(all_rois_left, gt_boxes_left)  # B x num_rois x num_gt
         overlaps_right = bbox_overlaps_batch(all_rois_right, gt_boxes_right) # B x num_rois(2030) x num_gt(30)
-
+        #index = gt_assignment_left
+        #返回最大的IOU和对应gt索引
         max_overlaps_left, gt_assignment_left = torch.max(overlaps_left, 2)  # B x num_rois(2030)
+
+        # assert(0)
         max_overlaps_right, gt_assignment_right = torch.max(overlaps_right, 2)
 
         batch_size = overlaps_left.size(0)
@@ -299,6 +309,7 @@ class _ProposalTargetLayer(nn.Module):
 
             # TODO: check the below line when batch_size > 1, no need to add offset here
             gt_assign_batch_left[i] = gt_assignment_left[i][keep_inds]
+
             gt_assign_batch_right[i] = gt_assignment_right[i][keep_inds]
 
             gt_rois_batch_left[i] = gt_boxes_left[i][gt_assignment_left[i][keep_inds]]
@@ -316,17 +327,24 @@ class _ProposalTargetLayer(nn.Module):
         dim_orien_target_data = self._compute_dim_orien_targets_pytorch(gt_dim_orien_batch)
 
         kpts_target_data, kpts_weight = self._compute_kpts_targets_pytorch(rois_batch_left[:,:,1:5], gt_kpts_batch)
-        
+
         bbox_targets_left, bbox_inside_weights_left = \
                 self._get_bbox_regression_labels_pytorch(bbox_target_data_left, labels_batch, num_classes)
-
+        # print("*****bbox_target_data_left******")
+        # print(bbox_target_data_left.shape)
+        # print(bbox_target_data_left)
+        # print("******labels_batch*****")
+        # print(labels_batch.shape)
+        # print(labels_batch)
         bbox_targets_right, bbox_inside_weights_right = \
                 self._get_bbox_regression_labels_pytorch(bbox_target_data_right, labels_batch, num_classes)
 
         dim_orien_target = self._get_dim_orien_regression_labels_pytorch(dim_orien_target_data, labels_batch, num_classes)
 
         kpts_targets, kpts_weight = self._get_kpts_regression_labels_pytorch(kpts_target_data, labels_batch, num_classes, kpts_weight)
-        
+
+        print(gt_assign_batch_left.shape)
+        print(gt_assign_batch_left)
         return labels_batch, rois_batch_left, rois_batch_right, gt_assign_batch_left, \
                bbox_targets_left, bbox_targets_right, dim_orien_target, kpts_targets, kpts_weight, bbox_inside_weights_left
 

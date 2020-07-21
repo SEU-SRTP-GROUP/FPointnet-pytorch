@@ -479,6 +479,8 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--demo', action='store_true', help='Run demo.')
     parser.add_argument('--gen_train', action='store_true', help='Generate train split frustum data with perturbed GT 2D boxes')
+    parser.add_argument('--gen_train_all', action='store_true',
+                        help='Generate train split frustum data with perturbed GT 2D boxes')
     parser.add_argument('--gen_val', action='store_true', help='Generate val split frustum data with GT 2D boxes')
     parser.add_argument('--gen_val_rgb_detection', action='store_true', help='Generate val split frustum data with RGB detection 2D boxes')
     parser.add_argument('--car_only', action='store_true', help='Only generate cars; otherwise cars, peds and cycs')
@@ -501,6 +503,13 @@ if __name__=='__main__':
             'training',
             os.path.join(BASE_DIR, output_prefix+'train.pickle'), 
             viz=False, perturb_box2d=True, augmentX=5,
+            type_whitelist=type_whitelist)
+    if args.gen_train_all:
+        extract_frustum_data( \
+            os.path.join(BASE_DIR, 'image_sets/train.txt'),
+            'training',
+            os.path.join(BASE_DIR, output_prefix + 'train_all.pickle'),
+            viz=False, perturb_box2d=True, augmentX=1,
             type_whitelist=type_whitelist)
 
     if args.gen_val:

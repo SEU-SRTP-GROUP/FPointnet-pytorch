@@ -20,7 +20,7 @@ import os
 for split in ['train', 'val', 'trainval', 'test']:
     name = 'kitti_{}'.format(split)
     # print name
-    data_path = './data/kitti/object'
+    data_path = './srcnn/data/kitti/object'
     #print(os.path.abspath(__file__))
     #assert(0)
     __sets[name] = (lambda split=split: kitti(split, data_path))

@@ -4,7 +4,6 @@ from __future__ import print_function
 
 from model.utils.config import cfg
 from model.stereo_rcnn.stereo_rcnn import _StereoRCNN
-from model.stereo_rcnn.vgg16 import VGG16
 
 import torch
 import torch.nn as nn
@@ -24,8 +23,6 @@ model_urls = {
   'resnet50': 'https://s3.amazonaws.com/pytorch/models/resnet50-19c8e357.pth',
   'resnet101': 'https://s3.amazonaws.com/pytorch/models/resnet101-5d3b4d8f.pth',
   'resnet152': 'https://s3.amazonaws.com/pytorch/models/resnet152-b121ed2d.pth',
-  'vgg16': 'https://download.pytorch.org/models/vgg16-397923af.pth',
-  'vgg16_bn': 'https://download.pytorch.org/models/vgg16_bn-6c64b313.pth',
 }
 
 def conv3x3(in_planes, out_planes, stride=1):
@@ -227,99 +224,25 @@ def resnet152(pretrained=False):
 
 class resnet(_StereoRCNN):
   def __init__(self, classes, num_layers=101, pretrained=False):
-    self.model_path = 'data/pretrained_model/resnet101_caffe.pth'
-    self.vgg_path = 'data/pretrained_model/vgg16.pth'
+    self.model_path = 'srcnn/data/pretrained_model/resnet101_caffe.pth'
     self.dout_base_model = 256
     self.pretrained = pretrained
-    self.classes = classes
 
     _StereoRCNN.__init__(self, classes)
 
   def _init_modules(self):
-    # resnet = resnet101()
-
-    # if self.pretrained == True:
-    #   print("Loading pretrained weights from %s" %(self.model_path))
-    #   state_dict = torch.load(self.model_path)
-    #   # state_dict = torch.load(self.vgg_path)
-    #   resnet.load_state_dict({k:v for k,v in state_dict.items() if k in resnet.state_dict()})
+    resnet = resnet101()
     #
-    # self.RCNN_layer0 = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool)
-    # self.RCNN_layer1 = nn.Sequential(resnet.layer1)
-    # self.RCNN_layer2 = nn.Sequential(resnet.layer2)
-    # self.RCNN_layer3 = nn.Sequential(resnet.layer3)
-    # self.RCNN_layer4 = nn.Sequential(resnet.layer4)
-
-    vgg = VGG16()
-    state_dict = torch.load(self.vgg_path)
-    # 修改状态字典中key和模型名对应
-    state_dict['conv1_1.weight'] = state_dict.pop('features.0.weight')
-    state_dict['conv1_1.bias'] = state_dict.pop('features.0.bias')
-    state_dict['conv1_2.weight'] = state_dict.pop('features.2.weight')
-    state_dict['conv1_2.bias'] = state_dict.pop('features.2.bias')
-    state_dict['conv2_1.weight'] = state_dict.pop('features.5.weight')
-    state_dict['conv2_1.bias'] = state_dict.pop('features.5.bias')
-    state_dict['conv2_2.weight'] = state_dict.pop('features.7.weight')
-    state_dict['conv2_2.bias'] = state_dict.pop('features.7.bias')
-    state_dict['conv3_1.weight'] = state_dict.pop('features.10.weight')
-    state_dict['conv3_1.bias'] = state_dict.pop('features.10.bias')
-    state_dict['conv3_2.weight'] = state_dict.pop('features.12.weight')
-    state_dict['conv3_2.bias'] = state_dict.pop('features.12.bias')
-    state_dict['conv3_3.weight'] = state_dict.pop('features.14.weight')
-    state_dict['conv3_3.bias'] = state_dict.pop('features.14.bias')
-    state_dict['conv4_1.weight'] = state_dict.pop('features.17.weight')
-    state_dict['conv4_1.bias'] = state_dict.pop('features.17.bias')
-    state_dict['conv4_2.weight'] = state_dict.pop('features.19.weight')
-    state_dict['conv4_2.bias'] = state_dict.pop('features.19.bias')
-    state_dict['conv4_3.weight'] = state_dict.pop('features.21.weight')
-    state_dict['conv4_3.bias'] = state_dict.pop('features.21.bias')
-    state_dict['conv5_1.weight'] = state_dict.pop('features.24.weight')
-    state_dict['conv5_1.bias'] = state_dict.pop('features.24.bias')
-    state_dict['conv5_2.weight'] = state_dict.pop('features.26.weight')
-    state_dict['conv5_2.bias'] = state_dict.pop('features.26.bias')
-    state_dict['conv5_3.weight'] = state_dict.pop('features.28.weight')
-    state_dict['conv5_3.bias'] = state_dict.pop('features.28.bias')
-    state_dict['fc1.weight'] = state_dict.pop('classifier.0.weight')
-    state_dict['fc1.bias'] = state_dict.pop('classifier.0.bias')
-    state_dict['fc2.weight'] = state_dict.pop('classifier.3.weight')
-    state_dict['fc2.bias'] = state_dict.pop('classifier.3.bias')
-    state_dict['fc3.weight'] = state_dict.pop('classifier.6.weight')
-    state_dict['fc3.bias'] = state_dict.pop('classifier.6.bias')
-    # for k,v in state_dict.items():
-    #   print(k)
-    vgg.load_state_dict({k:v for k,v in state_dict.items() if k in vgg.state_dict()})
-
-    self.RCNN_layer0 = nn.Sequential(vgg.conv1_1,
-                                     nn.ReLU(inplace=True),
-                                     vgg.conv1_2,
-                                     nn.ReLU(inplace=True),
-                                     vgg.maxpool1)
-    self.RCNN_layer1 = nn.Sequential(vgg.conv2_1,
-                                     nn.ReLU(inplace=True),
-                                     vgg.conv2_2,
-                                     nn.ReLU(inplace=True),
-                                     vgg.maxpool2)
-    self.RCNN_layer2 = nn.Sequential(vgg.conv3_1,
-                                     nn.ReLU(inplace=True),
-                                     vgg.conv3_2,
-                                     nn.ReLU(inplace=True),
-                                     vgg.conv3_3,
-                                     nn.ReLU(inplace=True),
-                                     vgg.maxpool3)
-    self.RCNN_layer3 = nn.Sequential(vgg.conv4_1,
-                                     nn.ReLU(inplace=True),
-                                     vgg.conv4_2,
-                                     nn.ReLU(inplace=True),
-                                     vgg.conv4_3,
-                                     nn.ReLU(inplace=True),
-                                     vgg.maxpool4)
-    self.RCNN_layer4 = nn.Sequential(vgg.conv5_1,
-                                     nn.ReLU(inplace=True),
-                                     vgg.conv5_2,
-                                     nn.ReLU(inplace=True),
-                                     vgg.conv5_3,
-                                     nn.ReLU(inplace=True),
-                                     vgg.maxpool5)
+    if self.pretrained == True:
+      print("Loading pretrained weights from %s" %(self.model_path))
+      state_dict = torch.load(self.model_path)
+      resnet.load_state_dict({k:v for k,v in state_dict.items() if k in resnet.state_dict()})
+      
+    self.RCNN_layer0 = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool)
+    self.RCNN_layer1 = nn.Sequential(resnet.layer1)
+    self.RCNN_layer2 = nn.Sequential(resnet.layer2)
+    self.RCNN_layer3 = nn.Sequential(resnet.layer3)
+    self.RCNN_layer4 = nn.Sequential(resnet.layer4)
     '''
     ###不训练某些层
     frozen_layers = [self.RCNN_layer0, self.RCNN_layer1, self.RCNN_layer2, self.RCNN_layer3, self.RCNN_layer4]
@@ -329,7 +252,7 @@ class resnet(_StereoRCNN):
     '''
 
     # Top layer
-    self.RCNN_toplayer = nn.Conv2d(512, 256, kernel_size=1, stride=1, padding=0)  # reduce channel
+    self.RCNN_toplayer = nn.Conv2d(2048, 256, kernel_size=1, stride=1, padding=0)  # reduce channel
 
     # Smooth layers
     self.RCNN_smooth1 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
@@ -337,7 +260,6 @@ class resnet(_StereoRCNN):
     self.RCNN_smooth3 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
 
     # Lateral layers
-    # 这里拼上vgg后通道数不匹配的
     self.RCNN_latlayer1 = nn.Conv2d(1024, 256, kernel_size=1, stride=1, padding=0)
     self.RCNN_latlayer2 = nn.Conv2d( 512, 256, kernel_size=1, stride=1, padding=0)
     self.RCNN_latlayer3 = nn.Conv2d( 256, 256, kernel_size=1, stride=1, padding=0)

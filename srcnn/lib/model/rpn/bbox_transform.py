@@ -35,6 +35,8 @@ def bbox_transform(ex_rois, gt_rois):
 
     return targets
 
+# 计算与anchor有最大IOU的GT的偏移量，对roi进行微调，使得经过微调后的窗口跟gt更接近
+# ex_rois：表示anchor；gt_rois：表示GT
 def bbox_transform_batch(ex_rois, gt_rois):
 
     if ex_rois.dim() == 2:
@@ -289,6 +291,7 @@ def bbox_overlaps_batch(anchors, gt_boxes):
         boxes = anchors.view(batch_size, N, 1, 4).expand(batch_size, N, K, 4)
         query_boxes = gt_boxes.view(batch_size, 1, K, 4).expand(batch_size, N, K, 4)
 
+        #i insert重叠区域长宽
         iw = (torch.min(boxes[:,:,:,2], query_boxes[:,:,:,2]) -
             torch.max(boxes[:,:,:,0], query_boxes[:,:,:,0]) + 1)
         iw[iw < 0] = 0
@@ -303,7 +306,12 @@ def bbox_overlaps_batch(anchors, gt_boxes):
         # mask the overlap here.
         overlaps.masked_fill_(gt_area_zero.view(batch_size, 1, K).expand(batch_size, N, K), 0)
         overlaps.masked_fill_(anchors_area_zero.view(batch_size, N, 1).expand(batch_size, N, K), -1)
+        # print("********overlaps*******")
+        # print(overlaps.shape)
+        # print(overlaps)
+        # # assert(0)
     else:
         raise ValueError('anchors input dimension is not correct.')
 
+    #return 所有有效iou
     return overlaps

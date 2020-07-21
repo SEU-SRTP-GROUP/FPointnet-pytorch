@@ -14,13 +14,20 @@ import os
 import sys
 import pickle
 
-from model.utils.config import cfg
-from lib.roi_data_layer.minibatch import get_minibatch, get_minibatch
-from lib.roi_data_layer.model_util import g_type2class, g_class2type, g_type2onehotclass
-from lib.roi_data_layer.model_util import g_type_mean_size
-from lib.roi_data_layer.model_util import NUM_HEADING_BIN, NUM_SIZE_CLUSTER
+import os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(BASE_DIR)
+SRCNN_DIR = os.path.join(ROOT_DIR,'srcnn')
+# sys.path.append(os.path.join(SRCNN_DIR,'lib'))
+sys.path.append(SRCNN_DIR)
 
-from lib.roi_data_layer.provider import FrustumDataset
+from model.utils.config import cfg
+from roi_data_layer.minibatch import get_minibatch, get_minibatch
+from roi_data_layer.model_util import g_type2class, g_class2type, g_type2onehotclass
+from roi_data_layer.model_util import g_type_mean_size
+from roi_data_layer.model_util import NUM_HEADING_BIN, NUM_SIZE_CLUSTER
+
+from roi_data_layer.provider import FrustumDataset
 # from bbox_transform import bbox_transform_inv, clip_boxes
 
 import numpy as np
@@ -37,7 +44,7 @@ class roibatchLoader(data.Dataset):
   def __init__(self, roidb, ratio_list, ratio_index, batch_size, num_classes, training=True, normalize=None):
     self._roidb = roidb
     self._num_classes = num_classes
-    self.max_num_box = cfg.MAX_NUM_GT_BOXES
+    self.max_num_box = cfg.MAX_NUM_GT_BOXES   #30
     self.training = training
     self.normalize = normalize
     self.ratio_list = ratio_list
@@ -111,7 +118,7 @@ class roibatchLoader(data.Dataset):
                 self.TRAIN_DATASET[index]
 
         return data_left, data_right, im_info, gt_boxes_left_padding, gt_boxes_right_padding,\
-               gt_boxes_merge_padding, gt_dim_orien_padding, gt_kpts_padding, num_boxes,\
+               gt_boxes_merge_padding, gt_dim_orien_padding, gt_kpts_padding, num_boxes,index_ratio,\
                ps,seg,center,hclass,hres,sclass,sres,rotangle,onehotvec
     else: 
         data_left = data_left[0].permute(2, 0, 1).contiguous()

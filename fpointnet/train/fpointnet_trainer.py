@@ -131,63 +131,20 @@ class FPointnetTrainer :
         accuracy = torch.mean(correct.type(torch.float32))
         return iou2ds, iou3ds, accuracy
 
-    def train(self,restore_modle_dir = None,train_mode = "default",input_data = None,start_index =0, train_batch_num = None):
-        '''
 
-        :param start_index:  开始的 index
-        :param train_batch_num:  训练的 batch总数
-        :param restore_modle_dir:  是否载入模型
-        :param train_mode:   训练模式 default : 只训练 fpointnet , all 训练整个网络， none ：不做任何训练
-        :return:
-        '''
-
-        assert train_mode in ['default','all','none']
-        self.start_index = start_index
-        self.config._train_batch_num = train_batch_num
-        self.config._restore_model_path =  restore_modle_dir
-        self._train_mode = train_mode
-        if self._train_mode == 'none' :
-            return
-        elif self._train_mode =='default' :
-            self.writer = SummaryWriter('runs/default/exp')
-        elif self._train_mode =='all' :
-            self.writer = SummaryWriter('runs/all/exp')
-        self._train();
-
-
-    def _train(self, input_data = None):
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-        if self.config._restore_model_path == None :
-            fpointnet = FPointNet()
-            fpointnet = fpointnet.to(device)
-            init_fpointnet(fpointnet)
+    def _init_model(self,device,restore_model_dir = None):
+        if restore_model_dir == None:
+            self.fpointnet = FPointNet()
         else :
-            # 这个到时候可能要改成 checkpoint,现在先不管了
-            fpointnet = FPointNet()
-            fpointnet = fpointnet.to(device)
-            fpointnet.load_state_dict(torch.load(self.config._restore_model_path))
+            self.fpointnet = FPointNet()
+            self.fpointnet.load_state_dict(torch.load(self.config._restore_model_path))
+        self.fpointnet = self.fpointnet.to(device)
+        self.fpointnet.train()
 
-        optimizer = torch.optim.Adam(fpointnet.parameters(), lr=self.BASE_LEARNING_RATE)
-
-        # for name,param in fpointnet.named_parameters():
-        #         print(name + ':' )
-        #         print(param.requires_grad)
-
-        for epoch in range(self.MAX_EPOCH):
-            print('epoch: %d' % epoch)
-            self.train_one_epoch(fpointnet, device, optimizer,input_data = None)
-            self.eval_one_epoch(fpointnet, device, input_data = None)
-            # save the model every 10 epoch
-            if (epoch + 1) % 10 == 0:
-                path = os.path.join(self.MODEL_BASE_DIR,
-                                    'fpointnet_' + str(datetime.now()) + '_epoch' + str(epoch) + '.pth')
-                torch.save(fpointnet.state_dict(), path)
-        # save the final model
-        path = os.path.join(self.MODEL_BASE_DIR, 'fpointnet_' + str(datetime.now()) + '_final' + '.pth')
-        torch.save(fpointnet.state_dict(), path)
-
-        # @torchsnooper.snoop()
+    def _save_model(self):
+        path = os.path.join(self.MODEL_BASE_DIR, 'fpointnet_' + str(datetime.now()) + '_all' + '.pth')
+        torch.save(self.fpointnet.state_dict(), path)
+    def _get_3d_forward_result(self):
 
     def train_one_epoch(self,fpointnet, device, optimizer,input_data = None):
         '''

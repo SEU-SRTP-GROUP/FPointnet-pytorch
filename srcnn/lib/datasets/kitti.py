@@ -44,6 +44,7 @@ class kitti(imdb):
 
         self._data_path = os.path.join(self._kitti_path)
         self._classes = ('__background__', 'Pedestrian', 'Car', 'Cyclist')
+        # self._classes = ('__background__', 'Car')
         self._class_to_ind = dict(zip(self.classes, xrange(self.num_classes)))
         print(self._class_to_ind)
         self._image_ext = '.png'
@@ -107,10 +108,10 @@ class kitti(imdb):
         Load the indexes listed in this dataset's image set file.
         '''
         if self.name == 'kitti_train':
-            train_set_file = open('data/kitti/splits/train.txt', 'r')
+            train_set_file = open('srcnn/data/kitti/splits/train.txt', 'r')
             image_index = train_set_file.read().split('\n')
         elif self.name == 'kitti_val':
-            val_set_file = open('data/kitti/splits/val.txt', 'r')
+            val_set_file = open('srcnn/data/kitti/splits/val.txt', 'r')
             image_index = val_set_file.read().split('\n')
 
         return image_index
@@ -239,7 +240,6 @@ class kitti(imdb):
             for i in range(len(objects)):
 
                 cls = self._class_to_ind[objects[i].cls]
-                print(objects[i].cls)
                 boxes_left[i,:] = objects[i].boxes[0].box
                 boxes_right[i,:] = objects[i].boxes[1].box
                 boxes_merge[i,:] = objects[i].boxes[2].box

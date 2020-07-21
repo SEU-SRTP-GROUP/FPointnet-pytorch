@@ -167,6 +167,7 @@ def read_obj_data(LABEL_PATH, calib=None, im_shape=None):
             List of KittiObject : Contains all the labeled data
 
     '''
+    # used_cls = ['Car', 'Van', 'Truck', 'Misc']
     used_cls = ['Pedestrian', 'Cyclist', 'Car', 'Van', 'Truck', 'Misc']
     objects = []
 
@@ -174,7 +175,7 @@ def read_obj_data(LABEL_PATH, calib=None, im_shape=None):
     detections = detection_data.readlines()
 
     for object_index in range(len(detections)):
-        
+
         data_str = detections[object_index]
         data_list = data_str.split()
         
